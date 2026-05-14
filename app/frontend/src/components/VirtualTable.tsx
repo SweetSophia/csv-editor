@@ -13,8 +13,38 @@ import {
     type Selection,
     singleCell,
 } from '../selection';
+import type { Match } from '../find';
 
 type Row = string[];
+
+interface CellMatchInfo {
+    starts: number[];
+    ends: number[];
+    currentLocal: number; // index within this cell's matches that is "current", or -1
+}
+
+function renderCellWithMatches(text: string, info: CellMatchInfo): React.ReactNode {
+    if (!text) return text;
+    const parts: React.ReactNode[] = [];
+    let cursor = 0;
+    for (let i = 0; i < info.starts.length; i++) {
+        const start = info.starts[i];
+        const end = info.ends[i];
+        if (start > cursor) parts.push(text.substring(cursor, start));
+        const isCurrent = i === info.currentLocal;
+        parts.push(
+            <span
+                key={i}
+                className={'vt-match' + (isCurrent ? ' vt-match-current' : '')}
+            >
+                {text.substring(start, end)}
+            </span>,
+        );
+        cursor = end;
+    }
+    if (cursor < text.length) parts.push(text.substring(cursor));
+    return parts;
+}
 
 export interface EditingCell {
     rowIndex: number;
@@ -49,6 +79,8 @@ interface VirtualTableProps {
     onMoveRows: (direction: 'up' | 'down') => void;
     onMoveCols: (direction: 'left' | 'right') => void;
     onContextMenu: (e: React.MouseEvent, target: ContextMenuTarget) => void;
+    matches: Match[];
+    currentMatchIndex: number;
 }
 
 const ROW_NUMBER_WIDTH = 64;
@@ -79,7 +111,26 @@ export function VirtualTable({
     onMoveRows,
     onMoveCols,
     onContextMenu,
+    matches,
+    currentMatchIndex,
 }: VirtualTableProps) {
+    // Index matches by cell for O(1) lookup during render.
+    const matchesByCell = useMemo(() => {
+        const map = new Map<string, CellMatchInfo>();
+        for (let i = 0; i < matches.length; i++) {
+            const m = matches[i];
+            const key = `${m.rowIndex},${m.columnIndex}`;
+            let info = map.get(key);
+            if (!info) {
+                info = { starts: [], ends: [], currentLocal: -1 };
+                map.set(key, info);
+            }
+            if (i === currentMatchIndex) info.currentLocal = info.starts.length;
+            info.starts.push(m.matchStart);
+            info.ends.push(m.matchEnd);
+        }
+        return map;
+    }, [matches, currentMatchIndex]);
     const columns = useMemo<ColumnDef<Row>[]>(() => {
         const cols: ColumnDef<Row>[] = [];
         cols.push({
@@ -384,7 +435,25 @@ export function VirtualTable({
         if (!editing) scrollRef.current?.focus({ preventScroll: true });
     }, [editing]);
 
+    // Scroll the current match into view whenever it changes.
     useEffect(() => {
+        if (currentMatchIndex >= 0 && matches[currentMatchIndex]) {
+            const m = matches[currentMatchIndex];
+            ensureCellVisible(m.rowIndex, m.columnIndex);
+        }
+    }, [currentMatchIndex, matches, ensureCellVisible]);
+
+    // Refocus the table on data load — but don't steal focus from a form
+    // input the user might currently be typing into (e.g., the find bar).
+    useEffect(() => {
+        const active = document.activeElement;
+        if (
+            active instanceof HTMLInputElement ||
+            active instanceof HTMLTextAreaElement ||
+            active instanceof HTMLSelectElement
+        ) {
+            return;
+        }
         scrollRef.current?.focus({ preventScroll: true });
     }, [rows]);
 
@@ -575,6 +644,10 @@ export function VirtualTable({
                                               });
                                           },
                                       };
+                                const cellText = rows[v.index]?.[dataColIdx] ?? '';
+                                const cellMatches = isRowNum
+                                    ? undefined
+                                    : matchesByCell.get(`${v.index},${dataColIdx}`);
                                 return (
                                     <div
                                         key={cell.id}
@@ -584,12 +657,14 @@ export function VirtualTable({
                                     >
                                         {isEditing ? (
                                             <CellEditor
-                                                initialValue={rows[v.index]?.[dataColIdx] ?? ''}
+                                                initialValue={cellText}
                                                 width={cellWidth}
                                                 height={ROW_HEIGHT}
                                                 onCommit={onCommitEdit}
                                                 onCancel={onCancelEdit}
                                             />
+                                        ) : cellMatches ? (
+                                            renderCellWithMatches(cellText, cellMatches)
                                         ) : (
                                             flexRender(cell.column.columnDef.cell, cell.getContext())
                                         )}

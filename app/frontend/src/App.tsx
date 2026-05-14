@@ -8,6 +8,14 @@ import {
 } from './components/VirtualTable';
 import type { CommitDirection } from './components/CellEditor';
 import { ContextMenu, type MenuItem } from './components/ContextMenu';
+import { FindBar } from './components/FindBar';
+import {
+    findMatches,
+    replaceAllEdits,
+    replaceOneEdit,
+    type FindOptions,
+    type Match,
+} from './find';
 import {
     ConfirmDialog,
     LoadFile,
@@ -46,6 +54,18 @@ function App() {
         y: number;
     } | null>(null);
 
+    // Find / replace state.
+    const [findOpen, setFindOpen] = useState(false);
+    const [replaceMode, setReplaceMode] = useState(false);
+    const [findQuery, setFindQuery] = useState('');
+    const [replaceValue, setReplaceValue] = useState('');
+    const [findOptions, setFindOptions] = useState<FindOptions>({
+        caseSensitive: false,
+        regex: false,
+        wholeCell: false,
+    });
+    const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+
     const { file, rows } = state;
     const dirty = isDirty(state);
 
@@ -54,6 +74,39 @@ function App() {
         for (const row of rows) if (row.length > m) m = row.length;
         return Math.max(m, file?.maxColumns ?? 0);
     }, [file?.hasHeader, file?.header, file?.maxColumns, rows]);
+
+    const matches: Match[] = useMemo(() => {
+        if (!findOpen || !findQuery) return [];
+        return findMatches(findQuery, findOptions, rows);
+    }, [findOpen, findQuery, findOptions, rows]);
+
+    // Clamp currentMatchIndex when matches shrink (e.g., after a replace
+    // or an edit removed matches). Does NOT move the selection.
+    useEffect(() => {
+        if (matches.length === 0) {
+            if (currentMatchIndex !== 0) setCurrentMatchIndex(0);
+            return;
+        }
+        if (currentMatchIndex >= matches.length) {
+            setCurrentMatchIndex(matches.length - 1);
+        }
+    }, [matches, currentMatchIndex]);
+
+    // Reset the active match and jump to it only when the user changes the
+    // query / options / opens the bar — explicitly NOT when rows change
+    // mid-edit (that would keep yanking the selection back).
+    useEffect(() => {
+        if (!findOpen) return;
+        setCurrentMatchIndex(0);
+        if (matches.length > 0) {
+            const m = matches[0];
+            setSelection({
+                anchor: { rowIndex: m.rowIndex, columnIndex: m.columnIndex },
+                focus: { rowIndex: m.rowIndex, columnIndex: m.columnIndex },
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [findOpen, findQuery, findOptions]);
 
     useEffect(() => {
         SupportedReadEncodings().then(setSupportedEncodings).catch(() => {});
@@ -296,6 +349,110 @@ function App() {
 
     const handleUndo = useCallback(() => dispatch({ type: 'UNDO' }), []);
     const handleRedo = useCallback(() => dispatch({ type: 'REDO' }), []);
+
+    // --- Find / Replace ---
+
+    const handleFindNext = useCallback(() => {
+        if (matches.length === 0) return;
+        const next = (currentMatchIndex + 1) % matches.length;
+        setCurrentMatchIndex(next);
+        const m = matches[next];
+        setSelection({
+            anchor: { rowIndex: m.rowIndex, columnIndex: m.columnIndex },
+            focus: { rowIndex: m.rowIndex, columnIndex: m.columnIndex },
+        });
+    }, [matches, currentMatchIndex]);
+
+    const handleFindPrev = useCallback(() => {
+        if (matches.length === 0) return;
+        const prev = (currentMatchIndex - 1 + matches.length) % matches.length;
+        setCurrentMatchIndex(prev);
+        const m = matches[prev];
+        setSelection({
+            anchor: { rowIndex: m.rowIndex, columnIndex: m.columnIndex },
+            focus: { rowIndex: m.rowIndex, columnIndex: m.columnIndex },
+        });
+    }, [matches, currentMatchIndex]);
+
+    const handleFindOpen = useCallback((withReplace: boolean) => {
+        setFindOpen(true);
+        if (withReplace) setReplaceMode(true);
+    }, []);
+
+    const handleFindClose = useCallback(() => {
+        setFindOpen(false);
+        setReplaceMode(false);
+    }, []);
+
+    const handleReplaceOne = useCallback(() => {
+        if (!findOpen || matches.length === 0) return;
+        const match = matches[Math.min(currentMatchIndex, matches.length - 1)];
+        if (!match) return;
+        const edit = replaceOneEdit(match, replaceValue, findOptions, rows, findQuery);
+        if (edit) {
+            dispatch({ type: 'APPLY_EDITS', edits: [edit] });
+        }
+        // After the edit, matches will be recomputed; index handling kicks in.
+    }, [findOpen, matches, currentMatchIndex, replaceValue, findOptions, rows, findQuery]);
+
+    const handleReplaceAll = useCallback(() => {
+        if (!findOpen || matches.length === 0) return;
+        const edits = replaceAllEdits(findQuery, replaceValue, findOptions, rows);
+        if (edits.length > 0) {
+            dispatch({ type: 'APPLY_EDITS', edits });
+        }
+    }, [findOpen, matches.length, findQuery, replaceValue, findOptions, rows]);
+
+    // When find bar is open, keep focus in the find input across edits.
+    // Cell editing transitions focus to the CellEditor input; after commit
+    // we want to return to the find bar (not the underlying table) so the
+    // user can keep searching.
+    useEffect(() => {
+        if (!findOpen || editing !== null) return;
+        const active = document.activeElement;
+        // Don't steal focus if the user explicitly moved to another control.
+        if (
+            active instanceof HTMLInputElement &&
+            active.classList.contains('findbar-input')
+        ) {
+            return;
+        }
+        if (active instanceof HTMLSelectElement) return;
+        const input = document.querySelector<HTMLInputElement>('.findbar-input');
+        input?.focus();
+    }, [editing, findOpen]);
+
+    // Global Cmd+F / Cmd+H / Cmd+G / F3 shortcuts. These need to fire even
+    // when focus is on the find input or status bar select.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            const cmdOrCtrl = e.metaKey || e.ctrlKey;
+            if (cmdOrCtrl && e.key.toLowerCase() === 'f' && !e.shiftKey) {
+                e.preventDefault();
+                handleFindOpen(false);
+                return;
+            }
+            if (cmdOrCtrl && e.key.toLowerCase() === 'h') {
+                e.preventDefault();
+                handleFindOpen(true);
+                return;
+            }
+            if (cmdOrCtrl && e.key.toLowerCase() === 'g') {
+                e.preventDefault();
+                if (e.shiftKey) handleFindPrev();
+                else handleFindNext();
+                return;
+            }
+            if (e.key === 'F3') {
+                e.preventDefault();
+                if (e.shiftKey) handleFindPrev();
+                else handleFindNext();
+                return;
+            }
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [handleFindOpen, handleFindNext, handleFindPrev]);
 
     const handleCopy = useCallback(async () => {
         if (!selection) return;
@@ -733,6 +890,25 @@ function App() {
                     {error}
                 </div>
             )}
+            {file && findOpen && (
+                <FindBar
+                    query={findQuery}
+                    onQueryChange={setFindQuery}
+                    options={findOptions}
+                    onOptionsChange={setFindOptions}
+                    matchCount={matches.length}
+                    currentIndex={Math.min(currentMatchIndex, Math.max(0, matches.length - 1))}
+                    onNext={handleFindNext}
+                    onPrev={handleFindPrev}
+                    onClose={handleFindClose}
+                    replaceMode={replaceMode}
+                    onToggleReplaceMode={() => setReplaceMode((m) => !m)}
+                    replaceValue={replaceValue}
+                    onReplaceValueChange={setReplaceValue}
+                    onReplaceOne={handleReplaceOne}
+                    onReplaceAll={handleReplaceAll}
+                />
+            )}
             {file ? (
                 <VirtualTable
                     header={file.hasHeader ? file.header : null}
@@ -757,6 +933,11 @@ function App() {
                     onMoveRows={moveRowsByKey}
                     onMoveCols={moveColsByKey}
                     onContextMenu={handleContextMenu}
+                    matches={matches}
+                    currentMatchIndex={Math.min(
+                        currentMatchIndex,
+                        Math.max(0, matches.length - 1),
+                    )}
                 />
             ) : (
                 <main className="placeholder">
