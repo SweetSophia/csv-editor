@@ -40,6 +40,7 @@ import {
     type Selection,
 } from './selection';
 import type { SortKey } from './sort';
+import { inferColumnTypes } from './coltype';
 import { decodeTSV, encodeTSV } from './tsv';
 
 function App() {
@@ -79,6 +80,11 @@ function App() {
         for (const row of rows) if (row.length > m) m = row.length;
         return Math.max(m, file?.maxColumns ?? 0);
     }, [file?.hasHeader, file?.header, file?.maxColumns, rows]);
+
+    const numericColumns = useMemo(
+        () => inferColumnTypes(rows, maxColumns),
+        [rows, maxColumns],
+    );
 
     const matches: Match[] = useMemo(() => {
         if (!findOpen || !findQuery) return [];
@@ -1068,6 +1074,7 @@ function App() {
                     columnWidths={columnWidths}
                     onResizeColumn={handleResizeColumn}
                     onAutoFitColumn={handleAutoFitColumn}
+                    numericColumns={numericColumns}
                     selection={selection}
                     onSelectionChange={setSelection}
                     editing={editing}

@@ -63,6 +63,7 @@ interface VirtualTableProps {
     columnWidths: Map<number, number>;
     onResizeColumn: (columnIndex: number, width: number) => void;
     onAutoFitColumn: (columnIndex: number) => void;
+    numericColumns: boolean[];
     selection: Selection | null;
     onSelectionChange: (sel: Selection) => void;
     editing: EditingCell | null;
@@ -98,6 +99,7 @@ export function VirtualTable({
     columnWidths,
     onResizeColumn,
     onAutoFitColumn,
+    numericColumns,
     selection,
     onSelectionChange,
     editing,
@@ -635,9 +637,12 @@ export function VirtualTable({
                                     !isRowNum &&
                                     editing?.rowIndex === v.index &&
                                     editing?.columnIndex === dataColIdx;
+                                const isNumericCol =
+                                    !isRowNum && numericColumns[dataColIdx] === true;
                                 const className =
                                     'vt-cell' +
                                     (isRowNum ? ' vt-cell-rownum' : '') +
+                                    (isNumericCol ? ' vt-cell-numeric' : '') +
                                     (inSelection ? ' vt-cell-selected' : '') +
                                     (isFocus ? ' vt-cell-focus' : '') +
                                     (isEditing ? ' vt-cell-editing' : '');

@@ -151,6 +151,14 @@ html, body {
     user-select: none;
 }
 
+.vt-cell-numeric {
+    text-align: right;
+}
+
+.vt-cell-numeric .vt-cell-editor {
+    text-align: right;
+}
+
 .vt-cell-selected {
     background: var(--accent-bg);
 }
