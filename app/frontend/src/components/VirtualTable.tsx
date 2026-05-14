@@ -60,6 +60,9 @@ interface VirtualTableProps {
     header: string[] | null;
     rows: string[][];
     maxColumns: number;
+    columnWidths: Map<number, number>;
+    onResizeColumn: (columnIndex: number, width: number) => void;
+    onAutoFitColumn: (columnIndex: number) => void;
     selection: Selection | null;
     onSelectionChange: (sel: Selection) => void;
     editing: EditingCell | null;
@@ -92,6 +95,9 @@ export function VirtualTable({
     header,
     rows,
     maxColumns,
+    columnWidths,
+    onResizeColumn,
+    onAutoFitColumn,
     selection,
     onSelectionChange,
     editing,
@@ -131,6 +137,11 @@ export function VirtualTable({
         }
         return map;
     }, [matches, currentMatchIndex]);
+    const getColWidth = useCallback(
+        (i: number) => columnWidths.get(i) ?? DEFAULT_COL_WIDTH,
+        [columnWidths],
+    );
+
     const columns = useMemo<ColumnDef<Row>[]>(() => {
         const cols: ColumnDef<Row>[] = [];
         cols.push({
@@ -144,11 +155,11 @@ export function VirtualTable({
                 id: `c${i}`,
                 header: header?.[i] ?? (header ? `(col ${i + 1})` : `Col ${i + 1}`),
                 accessorFn: (row: Row) => row[i] ?? '',
-                size: DEFAULT_COL_WIDTH,
+                size: getColWidth(i),
             });
         }
         return cols;
-    }, [header, maxColumns]);
+    }, [header, maxColumns, getColWidth]);
 
     const table = useReactTable({
         data: rows,
@@ -177,7 +188,11 @@ export function VirtualTable({
         scrollPaddingStart: HEAD_HEIGHT,
     });
 
-    const totalWidth = ROW_NUMBER_WIDTH + maxColumns * DEFAULT_COL_WIDTH;
+    const totalWidth = useMemo(() => {
+        let sum = ROW_NUMBER_WIDTH;
+        for (let i = 0; i < maxColumns; i++) sum += getColWidth(i);
+        return sum;
+    }, [maxColumns, getColWidth]);
     const lastRow = Math.max(0, rows.length - 1);
     const lastCol = Math.max(0, maxColumns - 1);
 
@@ -192,14 +207,15 @@ export function VirtualTable({
             if (rowTop < viewTop) container.scrollTop = rowTop - HEAD_HEIGHT;
             else if (rowBottom > viewBottom) container.scrollTop = rowBottom - container.clientHeight;
 
-            const cellLeft = ROW_NUMBER_WIDTH + columnIndex * DEFAULT_COL_WIDTH;
-            const cellRight = cellLeft + DEFAULT_COL_WIDTH;
+            let cellLeft = ROW_NUMBER_WIDTH;
+            for (let i = 0; i < columnIndex; i++) cellLeft += getColWidth(i);
+            const cellRight = cellLeft + getColWidth(columnIndex);
             if (cellLeft < container.scrollLeft + ROW_NUMBER_WIDTH)
                 container.scrollLeft = cellLeft - ROW_NUMBER_WIDTH;
             else if (cellRight > container.scrollLeft + container.clientWidth)
                 container.scrollLeft = cellRight - container.clientWidth;
         },
-        [],
+        [getColWidth],
     );
 
     const clamp = useCallback(
@@ -490,7 +506,41 @@ export function VirtualTable({
                                 const isHeaderEditable = !isRowNumHeader && header !== null;
                                 const isEditingThis =
                                     !isRowNumHeader && editingHeader === dataColIdx;
-                                const cellWidth = h.getSize();
+                                const cellWidth = isRowNumHeader
+                                    ? h.getSize()
+                                    : getColWidth(dataColIdx);
+                                const resizeHandle = isRowNumHeader ? null : (
+                                    <div
+                                        className="vt-resize-handle"
+                                        onMouseDown={(e) => {
+                                            if (e.button !== 0) return;
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            const startX = e.clientX;
+                                            const startWidth = getColWidth(dataColIdx);
+                                            const onMove = (ev: MouseEvent) => {
+                                                const next = Math.max(
+                                                    40,
+                                                    Math.round(startWidth + (ev.clientX - startX)),
+                                                );
+                                                onResizeColumn(dataColIdx, next);
+                                            };
+                                            const onUp = () => {
+                                                window.removeEventListener('mousemove', onMove);
+                                                window.removeEventListener('mouseup', onUp);
+                                            };
+                                            window.addEventListener('mousemove', onMove);
+                                            window.addEventListener('mouseup', onUp);
+                                        }}
+                                        onDoubleClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            onAutoFitColumn(dataColIdx);
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        title="Drag to resize, double-click to auto-fit"
+                                    />
+                                );
                                 const headerHandlers = isRowNumHeader
                                     ? {}
                                     : {
@@ -548,6 +598,7 @@ export function VirtualTable({
                                         ) : (
                                             flexRender(h.column.columnDef.header, h.getContext())
                                         )}
+                                        {resizeHandle}
                                     </div>
                                 );
                             })}

@@ -119,6 +119,28 @@ html, body {
     color: var(--fg);
     user-select: none;
     line-height: 32px;
+    position: relative;
+}
+
+.vt-resize-handle {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 3;
+    background: transparent;
+}
+
+.vt-resize-handle:hover {
+    background: var(--accent);
+    opacity: 0.6;
+}
+
+.vt-resize-handle:active {
+    background: var(--accent);
+    opacity: 0.85;
 }
 
 .vt-cell-rownum {

@@ -55,6 +55,10 @@ function App() {
         y: number;
     } | null>(null);
 
+    const [columnWidths, setColumnWidths] = useState<Map<number, number>>(
+        () => new Map(),
+    );
+
     // Find / replace state.
     const [findOpen, setFindOpen] = useState(false);
     const [replaceMode, setReplaceMode] = useState(false);
@@ -119,6 +123,7 @@ function App() {
             setSelection(null);
             setEditing(null);
             setError(null);
+            setColumnWidths(new Map());
         });
         const offError = EventsOn('file:error', (message: string) => {
             setError(message);
@@ -730,6 +735,76 @@ function App() {
         [rows.length, maxColumns],
     );
 
+    const handleResizeColumn = useCallback((columnIndex: number, width: number) => {
+        setColumnWidths((prev) => {
+            const next = new Map(prev);
+            next.set(columnIndex, width);
+            return next;
+        });
+    }, []);
+
+    const handleAutoFitColumn = useCallback(
+        (columnIndex: number) => {
+            // Measure with a real off-screen <span> so all the font-related
+            // CSS (font-variant-numeric: tabular-nums, etc.) is applied as the
+            // browser actually renders cells. Canvas measureText was unreliable
+            // here because the CSS font shorthand it expects can't represent
+            // every value getComputedStyle returns.
+            const sample = document.querySelector<HTMLDivElement>(
+                '.vt-cell:not(.vt-cell-head):not(.vt-cell-rownum)',
+            );
+            const headerSample = document.querySelector<HTMLDivElement>(
+                '.vt-cell-head',
+            );
+            if (!sample) return;
+
+            const span = document.createElement('span');
+            span.style.position = 'absolute';
+            span.style.visibility = 'hidden';
+            span.style.whiteSpace = 'pre';
+            span.style.pointerEvents = 'none';
+            span.style.left = '-99999px';
+            span.style.top = '0';
+            document.body.appendChild(span);
+
+            const applyFont = (el: Element) => {
+                const cs = window.getComputedStyle(el);
+                span.style.fontFamily = cs.fontFamily;
+                span.style.fontSize = cs.fontSize;
+                span.style.fontWeight = cs.fontWeight;
+                span.style.fontStyle = cs.fontStyle;
+                span.style.fontVariantNumeric = cs.fontVariantNumeric;
+                span.style.letterSpacing = cs.letterSpacing;
+            };
+
+            const PAD = 16; // 0.5rem padding × 2
+            const BUFFER = 8; // breathing room so text doesn't get ellipsis-cut
+
+            let maxWidth = 0;
+            if (file?.hasHeader && file.header?.[columnIndex] && headerSample) {
+                applyFont(headerSample);
+                span.textContent = file.header[columnIndex];
+                maxWidth = span.offsetWidth;
+            }
+
+            applyFont(sample);
+            // Sample to keep this responsive on huge tables (~100k+ rows).
+            const stride = rows.length > 20000 ? Math.ceil(rows.length / 20000) : 1;
+            for (let r = 0; r < rows.length; r += stride) {
+                const cell = rows[r]?.[columnIndex];
+                if (!cell) continue;
+                span.textContent = cell;
+                const w = span.offsetWidth;
+                if (w > maxWidth) maxWidth = w;
+            }
+
+            span.remove();
+            const width = Math.max(60, Math.min(800, Math.ceil(maxWidth) + PAD + BUFFER));
+            handleResizeColumn(columnIndex, width);
+        },
+        [file?.hasHeader, file?.header, rows, handleResizeColumn],
+    );
+
     const sortByColumns = useCallback(
         (columnIndexes: number[], direction: 'asc' | 'desc') => {
             if (columnIndexes.length === 0) return;
@@ -842,6 +917,15 @@ function App() {
                             onClick: () => sortByColumns(sortCols, 'desc'),
                         },
                         {
+                            label: `Auto-fit ${label} width`,
+                            onClick: () => {
+                                for (let i = 0; i < range.count; i++) {
+                                    handleAutoFitColumn(range.start + i);
+                                }
+                            },
+                            separatorBefore: true,
+                        },
+                        {
                             label: `Insert ${label} left`,
                             onClick: () => insertColsLeft(range.start, range.count),
                             separatorBefore: true,
@@ -904,6 +988,7 @@ function App() {
             deleteCols,
             moveCols,
             sortByColumns,
+            handleAutoFitColumn,
             handleCut,
             handleCopy,
             handlePaste,
@@ -944,6 +1029,9 @@ function App() {
                     header={file.hasHeader ? file.header : null}
                     rows={rows}
                     maxColumns={maxColumns}
+                    columnWidths={columnWidths}
+                    onResizeColumn={handleResizeColumn}
+                    onAutoFitColumn={handleAutoFitColumn}
                     selection={selection}
                     onSelectionChange={setSelection}
                     editing={editing}
