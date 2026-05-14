@@ -86,6 +86,24 @@ func (b *Bindings) OpenFileDialog() (string, error) {
 	return path, nil
 }
 
+// SaveFileDialog shows the OS save dialog and returns the chosen path, or ""
+// if the user cancelled.
+func (b *Bindings) SaveFileDialog(defaultName string) (string, error) {
+	path, err := wailsRuntime.SaveFileDialog(b.ctx, wailsRuntime.SaveDialogOptions{
+		Title:           "Save CSV/TSV as",
+		DefaultFilename: defaultName,
+		Filters: []wailsRuntime.FileFilter{
+			{DisplayName: "CSV (*.csv)", Pattern: "*.csv"},
+			{DisplayName: "TSV (*.tsv)", Pattern: "*.tsv"},
+			{DisplayName: "All files", Pattern: "*"},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
 // LoadFile reads path, decodes with encodingHint (or auto-detects when empty),
 // parses as CSV or TSV based on delimiterHint or filename, and returns the
 // parsed table. The window title is also updated to "<filename> — CSV Editor".
@@ -182,6 +200,7 @@ func (b *Bindings) SaveFile(path, encodingName, lineEnding, delimiter string, ha
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 
+	wailsRuntime.WindowSetTitle(b.ctx, filepath.Base(path)+" — CSV Editor")
 	return nil
 }
 
@@ -209,4 +228,10 @@ func (b *Bindings) RequestOpenFile() {
 // "menu:save" event for the frontend to handle (frontend owns the row state).
 func (b *Bindings) RequestSave() {
 	wailsRuntime.EventsEmit(b.ctx, "menu:save")
+}
+
+// RequestSaveAs is invoked from File ▸ Save As menu. Emits "menu:saveAs"
+// for the frontend to drive the dialog + save flow.
+func (b *Bindings) RequestSaveAs() {
+	wailsRuntime.EventsEmit(b.ctx, "menu:saveAs")
 }

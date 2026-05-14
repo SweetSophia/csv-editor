@@ -9,7 +9,10 @@ interface StatusBarProps {
     supportedEncodings: string[];
     onEncodingChange: (encoding: string) => void;
     onHasHeaderToggle: (hasHeader: boolean) => void;
+    onLineEndingChange: (lineEnding: string) => void;
 }
+
+const LINE_ENDINGS = ['LF', 'CRLF'] as const;
 
 export function StatusBar({
     file,
@@ -19,6 +22,7 @@ export function StatusBar({
     supportedEncodings,
     onEncodingChange,
     onHasHeaderToggle,
+    onLineEndingChange,
 }: StatusBarProps) {
     return (
         <footer className="statusbar">
@@ -44,7 +48,7 @@ export function StatusBar({
                             </span>
                         )}
                         <span className="statusbar-item statusbar-muted">
-                            {file.delimiter === '\t' ? 'TSV' : 'CSV'} · {file.lineEnding} · {rows.length.toLocaleString()} rows
+                            {file.delimiter === '\t' ? 'TSV' : 'CSV'} · {rows.length.toLocaleString()} rows
                         </span>
                         <button
                             className="statusbar-item statusbar-toggle"
@@ -53,7 +57,20 @@ export function StatusBar({
                         >
                             Header: <strong>{file.hasHeader ? 'On' : 'Off'}</strong>
                         </button>
-                        <label className="statusbar-item statusbar-select-wrap" title="Encoding">
+                        <label className="statusbar-item statusbar-select-wrap" title="Line ending used on save">
+                            <select
+                                className="statusbar-select"
+                                value={file.lineEnding === 'CR' ? 'LF' : file.lineEnding}
+                                onChange={(e) => onLineEndingChange(e.target.value)}
+                            >
+                                {LINE_ENDINGS.map((le) => (
+                                    <option key={le} value={le}>
+                                        {le}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="statusbar-item statusbar-select-wrap" title="Encoding used on save">
                             <select
                                 className="statusbar-select"
                                 value={file.usedEncoding}

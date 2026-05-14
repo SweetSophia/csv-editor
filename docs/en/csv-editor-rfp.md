@@ -38,7 +38,7 @@ will eventually be published as OSS on GitHub.
 | Operation | Supported | Policy |
 |-----------|-----------|--------|
 | Read | UTF-8 (BOM optional), Shift_JIS, CP932 | Auto-detect. User can re-specify and reload on detection error |
-| Write | UTF-8 (no BOM), Shift_JIS, CP932 | User-selectable at save time; default configurable |
+| Write | UTF-8 (BOM optional), Shift_JIS, CP932 | User-selectable at save time; default configurable |
 
 Other encodings (UTF-16, EUC-JP, etc.) are out of scope for now.
 
@@ -348,6 +348,29 @@ plan. Retrofitting themes later would require a wholesale CSS rewrite, so
 **Phase 1 will ship with OS-following dark/light support via CSS custom
 properties + `prefers-color-scheme`**. User overrides (Auto / Light / Dark)
 are deferred to Phase 3 or later.
+
+### 8.5 UTF-8-BOM Added to Write Encodings (decided mid Phase 2 chunk B)
+
+The original RFP §2 listed write encodings as **UTF-8 (no BOM) / Shift_JIS /
+CP932**. Opening a BOM-prefixed UTF-8 file and trying to Save As triggered
+"UTF-8-BOM is not a writable encoding."
+
+Options considered:
+- (A) Silently map UTF-8-BOM → UTF-8 on save (strips the BOM)
+- (B) Support UTF-8 with BOM on write as well (read = write symmetry)
+
+User chose **(B)**.
+
+**Rationale:**
+- Preserves round-trip — open and save returns the same byte form.
+- Japanese Excel on Windows prefers UTF-8 with BOM (without it, files are
+  often misread as CP932).
+- Read and write supported sets become symmetric, keeping the mental model
+  simple.
+
+`encoding.Encode(text, UTF8BOM)` prepends EF BB BF before the UTF-8 bytes.
+`SupportedReadEncodings` and `SupportedWriteEncodings` now return the same
+set.
 
 ### 8. Native Title Bar Adopted (decided during Phase 2 scaffold review)
 

@@ -86,9 +86,10 @@ func TestEncode(t *testing.T) {
 	}{
 		{"utf8 ascii", "hello", UTF8, []byte("hello"), false},
 		{"utf8 japanese (no bom)", utf8Greeting, UTF8, []byte(utf8Greeting), false},
+		{"utf8 bom adds bom prefix", utf8Greeting, UTF8BOM, append([]byte{0xEF, 0xBB, 0xBF}, []byte(utf8Greeting)...), false},
+		{"utf8 bom empty input", "", UTF8BOM, []byte{0xEF, 0xBB, 0xBF}, false},
 		{"shift_jis japanese", utf8Greeting, ShiftJIS, cp932Greeting, false},
 		{"cp932 japanese", utf8Greeting, CP932, cp932Greeting, false},
-		{"utf8 bom is not writable", "hi", UTF8BOM, nil, true},
 		{"unsupported encoding", "hi", Encoding("EUC-JP"), nil, true},
 	}
 
@@ -120,6 +121,7 @@ func TestRoundTrip(t *testing.T) {
 	}{
 		{"utf8 ascii", "Hello, World", UTF8},
 		{"utf8 japanese", "日本語テスト,カンマ込み", UTF8},
+		{"utf8 bom japanese", "日本語テスト,カンマ込み", UTF8BOM},
 		{"shift_jis japanese", "日本語テスト,カンマ込み", ShiftJIS},
 		{"cp932 japanese", "日本語テスト,カンマ込み", CP932},
 	}

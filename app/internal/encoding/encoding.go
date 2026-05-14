@@ -39,10 +39,10 @@ func AllReadable() []Encoding {
 	return []Encoding{UTF8, UTF8BOM, ShiftJIS, CP932}
 }
 
-// AllWritable returns the encodings supported for write (UTF-8 BOM omitted
-// per RFP; UTF-8 means "no BOM" on output).
+// AllWritable returns the encodings supported for write. Same set as
+// AllReadable so that round-trip (open → save) preserves the byte form.
 func AllWritable() []Encoding {
-	return []Encoding{UTF8, ShiftJIS, CP932}
+	return []Encoding{UTF8, UTF8BOM, ShiftJIS, CP932}
 }
 
 // Detect returns the most likely encoding for data.
@@ -74,20 +74,23 @@ func Decode(data []byte, enc Encoding) (string, error) {
 	}
 }
 
-// Encode converts a UTF-8 string to bytes in enc.
-// UTF-8 output is always emitted without a BOM (per RFP §2 write spec).
+// Encode converts a UTF-8 string to bytes in enc. UTF8BOM prepends the
+// EF BB BF BOM marker.
 func Encode(s string, enc Encoding) ([]byte, error) {
 	switch enc {
 	case UTF8:
 		return []byte(s), nil
+	case UTF8BOM:
+		out := make([]byte, 0, len(utf8BOM)+len(s))
+		out = append(out, utf8BOM...)
+		out = append(out, s...)
+		return out, nil
 	case ShiftJIS, CP932:
 		encoded, _, err := transform.Bytes(japanese.ShiftJIS.NewEncoder(), []byte(s))
 		if err != nil {
 			return nil, fmt.Errorf("%s encode: %w", enc, err)
 		}
 		return encoded, nil
-	case UTF8BOM:
-		return nil, fmt.Errorf("UTF-8-BOM is not a writable encoding; use UTF-8")
 	default:
 		return nil, fmt.Errorf("unsupported encoding: %s", enc)
 	}

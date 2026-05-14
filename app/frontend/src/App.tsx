@@ -9,6 +9,7 @@ import {
 import {
     LoadFile,
     SaveFile,
+    SaveFileDialog,
     SupportedReadEncodings,
 } from '../wailsjs/go/main/Bindings';
 import { EventsOn } from '../wailsjs/runtime/runtime';
@@ -64,12 +65,45 @@ function App() {
         }
     }, [file, rows]);
 
+    const handleSaveAs = useCallback(async () => {
+        if (!file) return;
+        try {
+            const path = await SaveFileDialog(file.filename);
+            if (!path) return;
+            const delimiter = path.toLowerCase().endsWith('.tsv') ? '\t' : ',';
+            await SaveFile(
+                path,
+                file.usedEncoding,
+                file.lineEnding,
+                delimiter,
+                file.hasHeader,
+                file.hasHeader ? file.header : [],
+                rows,
+            );
+            const filename = path.split(/[\\/]/).pop() ?? path;
+            dispatch({
+                type: 'UPDATE_FILE',
+                patch: { path, filename, delimiter },
+            });
+            dispatch({ type: 'SAVED' });
+            setError(null);
+        } catch (e) {
+            setError(String(e));
+        }
+    }, [file, rows]);
+
     useEffect(() => {
-        const off = EventsOn('menu:save', () => {
+        const offSave = EventsOn('menu:save', () => {
             handleSave();
         });
-        return () => off();
-    }, [handleSave]);
+        const offSaveAs = EventsOn('menu:saveAs', () => {
+            handleSaveAs();
+        });
+        return () => {
+            offSave();
+            offSaveAs();
+        };
+    }, [handleSave, handleSaveAs]);
 
     const handleEncodingChange = useCallback(
         async (encoding: string) => {
@@ -102,6 +136,10 @@ function App() {
         },
         [file],
     );
+
+    const handleLineEndingChange = useCallback((lineEnding: string) => {
+        dispatch({ type: 'UPDATE_FILE', patch: { lineEnding } });
+    }, []);
 
     const handleStartEdit = useCallback((cell: EditingCell) => {
         setEditing(cell);
@@ -167,6 +205,7 @@ function App() {
                 supportedEncodings={supportedEncodings}
                 onEncodingChange={handleEncodingChange}
                 onHasHeaderToggle={handleHasHeaderToggle}
+                onLineEndingChange={handleLineEndingChange}
             />
         </div>
     );

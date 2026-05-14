@@ -37,6 +37,7 @@ export type Action =
     | { type: 'UNDO' }
     | { type: 'REDO' }
     | { type: 'SAVED' }
+    | { type: 'UPDATE_FILE'; patch: Partial<main.FileLoadResult> }
     | { type: 'CLEAR' };
 
 function setCell(rows: string[][], r: number, c: number, value: string): string[][] {
@@ -98,6 +99,11 @@ export function reducer(state: EditableState, action: Action): EditableState {
 
         case 'SAVED':
             return { ...state, savedHistoryLength: state.history.length };
+
+        case 'UPDATE_FILE': {
+            if (!state.file) return state;
+            return { ...state, file: { ...state.file, ...action.patch } };
+        }
 
         case 'CLEAR':
             return initialState;
