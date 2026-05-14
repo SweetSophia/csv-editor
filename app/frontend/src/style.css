@@ -5,3 +5,10 @@ html, body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
         "Hiragino Kaku Gothic ProN", "Noto Sans CJK JP", sans-serif;
 }
+
+/* Mark the whole window as a Wails drag-and-drop target. The Wails runtime
+   only fires OnFileDrop for drops whose target ancestor chain includes a
+   matching --wails-drop-target value. */
+body {
+    --wails-drop-target: drop;
+}

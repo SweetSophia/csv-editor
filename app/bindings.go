@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nlink-jp/csv-editor/internal/config"
 	"github.com/nlink-jp/csv-editor/internal/csvio"
 	"github.com/nlink-jp/csv-editor/internal/encoding"
 
@@ -25,6 +26,11 @@ func NewBindings() *Bindings {
 
 func (b *Bindings) startup(ctx context.Context) {
 	b.ctx = ctx
+	// Register the file-drop callback now that we have a context. Wails
+	// v2 wires this up via the runtime package rather than App options.
+	wailsRuntime.OnFileDrop(ctx, func(x, y int, paths []string) {
+		b.handleFileDrop(ctx, x, y, paths)
+	})
 }
 
 func (b *Bindings) shutdown(_ context.Context) {
@@ -149,6 +155,14 @@ func (b *Bindings) LoadFile(path, encodingHint, delimiterHint string, hasHeader 
 	filename := filepath.Base(path)
 	wailsRuntime.WindowSetTitle(b.ctx, filename+" — CSV Editor")
 
+	// Track this open in the recent files list and refresh the native menu.
+	if cfg, err := config.Load(); err == nil {
+		cfg.AddRecent(path)
+		if saveErr := config.Save(cfg); saveErr == nil {
+			b.rebuildMenu()
+		}
+	}
+
 	return &FileLoadResult{
 		Path:             path,
 		Filename:         filename,
@@ -234,6 +248,65 @@ func (b *Bindings) RequestSave() {
 // for the frontend to drive the dialog + save flow.
 func (b *Bindings) RequestSaveAs() {
 	wailsRuntime.EventsEmit(b.ctx, "menu:saveAs")
+}
+
+// RecentFiles returns the current recent-files list (most recent first).
+func (b *Bindings) RecentFiles() []string {
+	cfg, err := config.Load()
+	if err != nil || cfg == nil {
+		return []string{}
+	}
+	return cfg.RecentFiles
+}
+
+// ClearRecentFiles empties the recent list and refreshes the menu.
+func (b *Bindings) ClearRecentFiles() error {
+	cfg, err := config.Load()
+	if err != nil {
+		cfg = &config.Config{}
+	}
+	cfg.RecentFiles = nil
+	if err := config.Save(cfg); err != nil {
+		return err
+	}
+	b.rebuildMenu()
+	return nil
+}
+
+// handleFileDrop is invoked by Wails when files are dropped on the window.
+// It emits the first path through "file:open-path" so the frontend can run
+// its usual dirty-check / LoadFile flow.
+func (b *Bindings) handleFileDrop(_ context.Context, _, _ int, paths []string) {
+	if len(paths) == 0 {
+		return
+	}
+	wailsRuntime.EventsEmit(b.ctx, "file:open-path", paths[0])
+}
+
+// rebuildMenu / buildMenu live in main.go's buildMenu helper, but are exposed
+// through Bindings so callbacks (LoadFile, ClearRecentFiles) can refresh the
+// native menu in place. The actual menu construction is in main.go.
+var buildMenuFunc func(b *Bindings) any
+
+func (b *Bindings) rebuildMenu() {
+	if buildMenuFunc == nil || b.ctx == nil {
+		return
+	}
+	m := buildMenuFunc(b)
+	if m == nil {
+		return
+	}
+	// Type assertion happens in main.go; we hold a generic any here so
+	// bindings.go doesn't have to import wails/pkg/menu.
+	if menu, ok := m.(applyMenu); ok {
+		menu.apply(b.ctx)
+	}
+}
+
+// applyMenu lets main.go inject the *menu.Menu update without pulling the
+// menu package into bindings.go.
+type applyMenu interface {
+	apply(ctx context.Context)
 }
 
 // RequestNewFile is invoked from File ▸ New menu. The frontend listens

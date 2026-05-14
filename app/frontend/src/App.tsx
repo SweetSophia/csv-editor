@@ -134,6 +134,42 @@ function App() {
         };
     }, []);
 
+    // Open a file by absolute path. Triggered by drag-and-drop and the
+    // File ▸ Open Recent submenu.
+    const openPath = useCallback(
+        async (path: string) => {
+            if (!path) return;
+            if (dirty) {
+                try {
+                    const ok = await ConfirmDialog(
+                        'Discard changes?',
+                        `You have unsaved changes. Open ${path.split(/[\\/]/).pop()} anyway?`,
+                    );
+                    if (!ok) return;
+                } catch (e) {
+                    setError(String(e));
+                    return;
+                }
+            }
+            try {
+                const result = await LoadFile(path, '', '', true);
+                dispatch({ type: 'LOAD', payload: result });
+                setSelection(null);
+                setEditing(null);
+                setError(null);
+                setColumnWidths(new Map());
+            } catch (e) {
+                setError(String(e));
+            }
+        },
+        [dirty],
+    );
+
+    useEffect(() => {
+        const off = EventsOn('file:open-path', (path: string) => openPath(path));
+        return () => off();
+    }, [openPath]);
+
     const handleSaveAs = useCallback(async () => {
         if (!file) return;
         try {

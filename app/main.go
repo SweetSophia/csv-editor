@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"path/filepath"
 	goruntime "runtime"
+
+	"github.com/nlink-jp/csv-editor/internal/config"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
@@ -17,9 +21,20 @@ var version = "dev"
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// menuWrapper implements bindings.applyMenu so rebuildMenu can swap the
+// native menu without bindings.go pulling in the wails menu types.
+type menuWrapper struct{ m *menu.Menu }
+
+func (w menuWrapper) apply(ctx context.Context) {
+	wailsRuntime.MenuSetApplicationMenu(ctx, w.m)
+	wailsRuntime.MenuUpdateApplicationMenu(ctx)
+}
+
 func main() {
 	bindings := NewBindings()
-	appMenu := buildMenu(bindings)
+	buildMenuFunc = func(b *Bindings) any {
+		return menuWrapper{m: buildMenu(b)}
+	}
 
 	err := wails.Run(&options.App{
 		Title:                    "CSV Editor",
@@ -30,11 +45,17 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 250, G: 250, B: 250, A: 1},
-		Menu:             appMenu,
+		Menu:             buildMenu(bindings),
 		OnStartup:        bindings.startup,
 		OnShutdown:       bindings.shutdown,
 		Bind: []interface{}{
 			bindings,
+		},
+		DragAndDrop: &options.DragAndDrop{
+			EnableFileDrop:     true,
+			DisableWebViewDrop: true,
+			CSSDropProperty:    "--wails-drop-target",
+			CSSDropValue:       "drop",
 		},
 	})
 
@@ -57,6 +78,25 @@ func buildMenu(b *Bindings) *menu.Menu {
 	fileMenu.AddText("Open...", keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
 		b.RequestOpenFile()
 	})
+
+	recentMenu := fileMenu.AddSubmenu("Open Recent")
+	cfg, _ := config.Load()
+	if cfg != nil && len(cfg.RecentFiles) > 0 {
+		for _, p := range cfg.RecentFiles {
+			path := p // capture by value for the closure
+			recentMenu.AddText(filepath.Base(path), nil, func(_ *menu.CallbackData) {
+				wailsRuntime.EventsEmit(b.ctx, "file:open-path", path)
+			})
+		}
+		recentMenu.AddSeparator()
+		recentMenu.AddText("Clear Recent Files", nil, func(_ *menu.CallbackData) {
+			_ = b.ClearRecentFiles()
+		})
+	} else {
+		emptyItem := recentMenu.AddText("(none)", nil, nil)
+		emptyItem.Disabled = true
+	}
+
 	fileMenu.AddSeparator()
 	fileMenu.AddText("Save", keys.CmdOrCtrl("s"), func(_ *menu.CallbackData) {
 		b.RequestSave()
