@@ -89,6 +89,16 @@ GitHub で公開する。
 - ドラッグ & ドロップで開く
 - 最近使ったファイル履歴 (10 件)
 
+### カラーテーマ
+
+- OS のダーク/ライトモード設定に**自動追従** (macOS の Appearance、Windows の
+  Light/Dark) を必須とする
+- 実装は CSS カスタムプロパティ + `@media (prefers-color-scheme: dark)` を
+  ベースとし、Phase 1 から組み込む (後付けにすると CSS 全体の書き直しに
+  なるため)
+- 将来的には設定でユーザー上書き (Auto / Light / Dark) を提供するが、Phase 1
+  時点では OS 追従のみで可
+
 ### 設定保存
 
 OS 標準位置に JSON ファイル 1 個を保存:
@@ -103,6 +113,7 @@ OS 標準位置に JSON ファイル 1 個を保存:
 - ウィンドウサイズ・位置
 - フォント
 - 列幅
+- テーマ設定 (Auto / Light / Dark、初期は Auto)
 
 ### 外部依存
 
@@ -313,3 +324,21 @@ Windows SmartScreen の回避手順を記載する。ユーザーが増えた段
 CONVENTIONS.md の「テストは実装と同時に必須」を踏まえ、Go 層はテーブル駆動の
 単体テスト必須、React 層は Vitest+RTL でコンポーネントテスト。E2E は Phase 4
 まで手動チェックリストで運用し、自動化は必要に応じて検討する。
+
+### 7. カラーテーマ必須化 (Phase 2 スキャフォールド検証中に追加)
+
+スキャフォールド完了後の動作確認で、テーマ対応が漏れていることが判明。後付け
+にすると CSS の大規模書き直しになるため、**Phase 1 から CSS カスタム
+プロパティ + `prefers-color-scheme` で OS 追従** とする方針を確定。ユーザー
+上書き設定 (Auto/Light/Dark) は Phase 3 以降で追加可。
+
+### 8. ネイティブタイトルバー採用 (Phase 2 スキャフォールド検証中に決定)
+
+初期スキャフォールドでは macOS 透過タイトルバー (`FullSizeContent: true` +
+`TitlebarAppearsTransparent: true`) を採用していたが、(a) ウィンドウドラッグ
+領域を自前で `--wails-draggable: drag` で確保する必要があり、(b) OS 描画の
+タイトルと React 側のタイトルが二重描画される問題があった。CSV エディタは
+ユーティリティアプリであり奇抜さは不要なので、**OS 標準タイトルバーを使う**
+方針に切替。タイトルバーには開いているファイル名を表示する
+(例: `data.csv — CSV Editor`)、Phase 2 以降で `runtime.WindowSetTitle`
+経由で動的に更新する。

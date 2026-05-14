@@ -94,6 +94,16 @@ Other encodings (UTF-16, EUC-JP, etc.) are out of scope for now.
 - Drag & drop to open
 - Recent files history (10 entries)
 
+### Color Theme
+
+- **Automatic OS dark/light mode tracking is mandatory** (macOS Appearance,
+  Windows Light/Dark)
+- Implemented via CSS custom properties +
+  `@media (prefers-color-scheme: dark)`, **built in from Phase 1** —
+  retrofitting later requires rewriting the entire stylesheet.
+- User override (Auto / Light / Dark) is deferred to a later phase. Phase 1
+  ships with OS-following only.
+
 ### Configuration Storage
 
 A single JSON file at the OS-standard location:
@@ -108,6 +118,7 @@ Stored items:
 - Window size & position
 - Font
 - Column widths
+- Theme preference (Auto / Light / Dark; default Auto)
 
 ### External Dependencies
 
@@ -329,3 +340,22 @@ Per CONVENTIONS.md's "tests are mandatory with the implementation" rule, the
 Go layer requires table-driven unit tests, the React layer uses Vitest+RTL
 for component tests, and E2E runs as a manual checklist through Phase 4 with
 automation considered as needed.
+
+### 7. Color Theme Made Mandatory (added during Phase 2 scaffold review)
+
+Verification of the scaffold revealed that theming had been omitted from the
+plan. Retrofitting themes later would require a wholesale CSS rewrite, so
+**Phase 1 will ship with OS-following dark/light support via CSS custom
+properties + `prefers-color-scheme`**. User overrides (Auto / Light / Dark)
+are deferred to Phase 3 or later.
+
+### 8. Native Title Bar Adopted (decided during Phase 2 scaffold review)
+
+The initial scaffold used a macOS transparent titlebar (`FullSizeContent: true`
++ `TitlebarAppearsTransparent: true`), but this produced (a) a non-draggable
+window unless `--wails-draggable: drag` was placed by hand, and (b) double
+title rendering (OS-drawn vs React-rendered). For a utility application,
+flashy chrome is unwarranted, so the scaffold **switched to the native OS
+title bar**. The title bar will show the open file name
+(e.g. `data.csv — CSV Editor`), updated dynamically via
+`runtime.WindowSetTitle` from Phase 2 onward.

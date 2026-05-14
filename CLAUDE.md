@@ -35,6 +35,13 @@ RFP. Highlights:
 
 - **CSV/TSV only** — not a spreadsheet. No formulas, no multiple sheets,
   no xlsx native support, no charts.
+- **OS theme follows automatically** — light / dark via CSS custom properties
+  and `prefers-color-scheme`. Don't hardcode colors; use the `--bg`, `--fg`,
+  `--fg-muted`, `--border` tokens defined in `App.css`.
+- **Native OS title bar** — we use the default macOS / Windows title bar
+  (no `FullSizeContent`, no transparent titlebar). The window title reflects
+  the open file, e.g. `filename.csv — CSV Editor`, updated via
+  `runtime.WindowSetTitle`.
 - **Encoding scope** — UTF-8 (BOM optional), Shift_JIS, CP932 only. Auto-detect
   on read, user-selected on write.
 - **One file per window** — multiple files open in multiple windows.

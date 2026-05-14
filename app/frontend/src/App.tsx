@@ -11,13 +11,11 @@ function App() {
 
     return (
         <div id="App">
-            <header className="header">
-                <h1>CSV Editor</h1>
-                <span className="version">{version && `v${version}`}</span>
-            </header>
             <main className="placeholder">
+                <h1>CSV Editor</h1>
                 <p>Phase 1 (Core, read-only) — under construction.</p>
                 <p>Open a CSV/TSV file to begin once the viewer is implemented.</p>
+                {version && <small className="version">v{version}</small>}
             </main>
         </div>
     );
