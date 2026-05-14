@@ -39,6 +39,7 @@ import {
     type CellPosition,
     type Selection,
 } from './selection';
+import type { SortKey } from './sort';
 import { decodeTSV, encodeTSV } from './tsv';
 
 function App() {
@@ -729,6 +730,19 @@ function App() {
         [rows.length, maxColumns],
     );
 
+    const sortByColumns = useCallback(
+        (columnIndexes: number[], direction: 'asc' | 'desc') => {
+            if (columnIndexes.length === 0) return;
+            const keys: SortKey[] = columnIndexes.map((columnIndex) => ({
+                columnIndex,
+                direction,
+                mode: 'auto',
+            }));
+            dispatch({ type: 'SORT_ROWS', keys });
+        },
+        [],
+    );
+
     const moveCols = useCallback(
         (startIndex: number, count: number, direction: 'left' | 'right') => {
             dispatch({ type: 'MOVE_COLS', startIndex, count, direction });
@@ -812,10 +826,25 @@ function App() {
                 case 'column': {
                     const range = selectedColRange(target.columnIndex);
                     const label = range.count === 1 ? 'column' : `${range.count} columns`;
+                    const sortCols = Array.from(
+                        { length: range.count },
+                        (_, i) => range.start + i,
+                    );
+                    const sortLabel =
+                        range.count === 1 ? 'this column' : `these ${range.count} columns`;
                     items = [
+                        {
+                            label: `Sort ascending by ${sortLabel}`,
+                            onClick: () => sortByColumns(sortCols, 'asc'),
+                        },
+                        {
+                            label: `Sort descending by ${sortLabel}`,
+                            onClick: () => sortByColumns(sortCols, 'desc'),
+                        },
                         {
                             label: `Insert ${label} left`,
                             onClick: () => insertColsLeft(range.start, range.count),
+                            separatorBefore: true,
                         },
                         {
                             label: `Insert ${label} right`,
@@ -874,6 +903,7 @@ function App() {
             duplicateCols,
             deleteCols,
             moveCols,
+            sortByColumns,
             handleCut,
             handleCopy,
             handlePaste,

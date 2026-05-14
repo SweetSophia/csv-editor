@@ -1,4 +1,5 @@
 import type { main } from '../wailsjs/go/models';
+import { sortRows, type SortKey } from './sort';
 
 // PendingEdit is what callers supply to APPLY_EDITS. The reducer reads
 // the current value to record it as the "before" half of the snapshot.
@@ -65,6 +66,7 @@ export type Action =
     | { type: 'DUPLICATE_COLS'; startIndex: number; count: number }
     | { type: 'MOVE_COLS'; startIndex: number; count: number; direction: 'left' | 'right' }
     | { type: 'SET_HAS_HEADER'; value: boolean }
+    | { type: 'SORT_ROWS'; keys: SortKey[] }
     | { type: 'UNDO' }
     | { type: 'REDO' }
     | { type: 'SAVED' }
@@ -340,6 +342,22 @@ export function reducer(state: EditableState, action: Action): EditableState {
             while (newHeader.length <= columnIndex) newHeader.push('');
             newHeader[columnIndex] = value;
             return pushHistory(state, state.rows, newHeader);
+        }
+
+        case 'SORT_ROWS': {
+            if (!state.file) return state;
+            if (action.keys.length === 0 || state.rows.length === 0) return state;
+            const sorted = sortRows(state.rows, action.keys);
+            // Skip the no-op case (already in sorted order).
+            let changed = false;
+            for (let i = 0; i < sorted.length; i++) {
+                if (sorted[i] !== state.rows[i]) {
+                    changed = true;
+                    break;
+                }
+            }
+            if (!changed) return state;
+            return pushHistory(state, sorted, state.file.header);
         }
 
         case 'SET_HAS_HEADER': {

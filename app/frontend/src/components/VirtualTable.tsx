@@ -495,13 +495,14 @@ export function VirtualTable({
                                     ? {}
                                     : {
                                           onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => {
+                                              // Always prevent the browser's default text
+                                              // selection on header cells (left, right, and
+                                              // middle clicks). Deferring the state-changing
+                                              // selectColumn keeps the DOM stable so dblclick
+                                              // still fires.
+                                              e.preventDefault();
                                               if (e.button !== 0) return;
                                               if (isEditingThis) return;
-                                              // Always prevent the browser's default text
-                                              // selection on header cells. Deferring the
-                                              // state-changing selectColumn keeps the DOM
-                                              // stable so dblclick still fires.
-                                              e.preventDefault();
                                               window.getSelection()?.removeAllRanges();
                                               cancelHeaderClickTimer();
                                               if (e.shiftKey) {
@@ -593,8 +594,11 @@ export function VirtualTable({
                                 const cellHandlers = isRowNum
                                     ? {
                                           onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => {
-                                              if (e.button !== 0) return;
+                                              // Always suppress default mousedown so neither
+                                              // left- nor right-click extends the WebView
+                                              // text selection over the row number label.
                                               e.preventDefault();
+                                              if (e.button !== 0) return;
                                               window.getSelection()?.removeAllRanges();
                                               selectRow(v.index, e.shiftKey);
                                           },
@@ -604,6 +608,12 @@ export function VirtualTable({
                                       }
                                     : {
                                           onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => {
+                                              if (e.button === 2) {
+                                                  // Right-click: don't change the selection,
+                                                  // but suppress any text selection extension.
+                                                  e.preventDefault();
+                                                  return;
+                                              }
                                               if (e.button !== 0) return;
                                               if (e.shiftKey) {
                                                   e.preventDefault();

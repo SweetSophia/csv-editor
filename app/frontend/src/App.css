@@ -104,6 +104,14 @@ html, body {
     border-right: 1px solid var(--border);
     font-variant-numeric: tabular-nums;
     box-sizing: border-box;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Cell editor input must remain selectable so the user can edit text. */
+.vt-cell-editor {
+    -webkit-user-select: auto;
+    user-select: auto;
 }
 
 .vt-cell-head {
