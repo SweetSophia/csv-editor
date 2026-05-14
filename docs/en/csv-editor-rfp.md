@@ -71,10 +71,8 @@ Other encodings (UTF-16, EUC-JP, etc.) are out of scope for now.
 | Search | Incremental + regex |
 | Replace | Replace all / one-by-one with confirmation |
 | Sort | Column-keyed, string/numeric, asc/desc, multi-key |
-| Filter | Row filtering by column predicate |
 | Column width | Manual adjust + auto-fit |
 | Type inference | Right-alignment for numeric columns (display only, no type coercion) |
-| Frozen pane | First row / first column pinning |
 
 ### Clipboard (Central to Resolving Pain Points)
 
@@ -174,6 +172,8 @@ the standard Wails build.
 - Native xlsx / ods read/write
 - Macros / scripting
 - Collaborative editing / cloud sync
+- **Filter** (row filtering by column predicate — moved out of scope mid Phase 3)
+- **Frozen pane** (column pinning — moved out of scope mid Phase 3)
 
 Including any of these would erode the project's positioning as a
 **CSV/TSV-dedicated tool**.
@@ -204,9 +204,7 @@ Independently reviewable; the result is "able to read" but already useful.
 - Search (incremental + regex)
 - Replace (all / one-by-one)
 - Sort (multi-key)
-- Filter
 - Column auto-fit
-- Frozen panes
 - Recent files
 - Drag & drop
 
@@ -348,6 +346,24 @@ plan. Retrofitting themes later would require a wholesale CSS rewrite, so
 **Phase 1 will ship with OS-following dark/light support via CSS custom
 properties + `prefers-color-scheme`**. User overrides (Auto / Light / Dark)
 are deferred to Phase 3 or later.
+
+### 9. Filter and Frozen Pane Dropped (decided mid Phase 3)
+
+Filter (row filtering by column predicate) and Frozen Pane (column pinning)
+were listed in §2 of the original RFP. Once Phase 3 had landed find/replace,
+sort, column width, drag-and-drop, and recent files, the user decided to
+**defer both features indefinitely**.
+
+**Rationale:**
+- Search + sort already cover the common "find / order" use cases.
+- Hiding rows and freezing columns are read-side ergonomics; they're not
+  core to a CSV editor's editing functionality.
+- The virtualized table already keeps the header row sticky. Frozen-pane
+  value beyond that is mainly "pin the leftmost column" — uncertain
+  demand at this stage.
+
+Both items are recorded in §3 Out of Scope. Revisit if real use cases
+appear.
 
 ### 8.5 UTF-8-BOM Added to Write Encodings (decided mid Phase 2 chunk B)
 
