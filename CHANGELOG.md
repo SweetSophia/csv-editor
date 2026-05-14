@@ -7,12 +7,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-14
+
 ### Added
 - Window position and size are now persisted to the config file
   (`window.x`, `window.y`, `window.width`, `window.height`) and restored
   on next launch. Saved via Wails' `OnBeforeClose` hook; size is applied
   from `config.json` at app startup, position is applied after the
   window exists. Sub-200px dimensions are rejected (fallback to default).
+
+### Changed
+- Removed a Wails template-default `// replace github.com/wailsapp/wails/v2
+  => /Users/magi/...` comment line from `app/go.mod` that leaked a local
+  module path (caught by `check-org.sh`). The build resolves Wails via
+  the normal module cache.
 
 ## [0.1.0] - 2026-05-14
 
@@ -88,5 +96,6 @@ for daily use as a CSV/TSV editor on macOS (Apple Silicon) and Windows 11.
 - Apple Silicon prioritized; Intel macOS may work but is not actively
   validated.
 
-[Unreleased]: https://github.com/nlink-jp/csv-editor/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nlink-jp/csv-editor/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/nlink-jp/csv-editor/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nlink-jp/csv-editor/releases/tag/v0.1.0
