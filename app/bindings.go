@@ -235,3 +235,19 @@ func (b *Bindings) RequestSave() {
 func (b *Bindings) RequestSaveAs() {
 	wailsRuntime.EventsEmit(b.ctx, "menu:saveAs")
 }
+
+// ConfirmDialog shows a Yes/No OS-native dialog. Returns true for Yes.
+func (b *Bindings) ConfirmDialog(title, message string) (bool, error) {
+	result, err := wailsRuntime.MessageDialog(b.ctx, wailsRuntime.MessageDialogOptions{
+		Type:          wailsRuntime.QuestionDialog,
+		Title:         title,
+		Message:       message,
+		DefaultButton: "No",
+		CancelButton:  "No",
+		Buttons:       []string{"Yes", "No"},
+	})
+	if err != nil {
+		return false, err
+	}
+	return result == "Yes", nil
+}

@@ -1,10 +1,10 @@
 import type { main } from '../../wailsjs/go/models';
-import type { SelectedCell } from './VirtualTable';
+import { bounds, isSingleCell, rectSize, type Selection } from '../selection';
 
 interface StatusBarProps {
     file: main.FileLoadResult | null;
     rows: string[][];
-    selected: SelectedCell | null;
+    selection: Selection | null;
     dirty: boolean;
     supportedEncodings: string[];
     onEncodingChange: (encoding: string) => void;
@@ -14,10 +14,22 @@ interface StatusBarProps {
 
 const LINE_ENDINGS = ['LF', 'CRLF'] as const;
 
+function selectionSummary(sel: Selection, rows: string[][]): string {
+    if (isSingleCell(sel)) {
+        const r = sel.focus.rowIndex;
+        const c = sel.focus.columnIndex;
+        const value = (rows[r]?.[c] ?? '').slice(0, 200);
+        return `R${r + 1} · C${c + 1} · ${value || '∅'}`;
+    }
+    const b = bounds(sel);
+    const { rows: nRows, cols: nCols } = rectSize(b);
+    return `R${b.r0 + 1}–${b.r1 + 1} · C${b.c0 + 1}–${b.c1 + 1} · ${nRows}×${nCols}`;
+}
+
 export function StatusBar({
     file,
     rows,
-    selected,
+    selection,
     dirty,
     supportedEncodings,
     onEncodingChange,
@@ -27,12 +39,8 @@ export function StatusBar({
     return (
         <footer className="statusbar">
             <div className="statusbar-left">
-                {file && selected ? (
-                    <span>
-                        R{selected.rowIndex + 1} · C{selected.columnIndex + 1}
-                        {' · '}
-                        {(rows[selected.rowIndex]?.[selected.columnIndex] ?? '').slice(0, 200) || '∅'}
-                    </span>
+                {file && selection ? (
+                    <span>{selectionSummary(selection, rows)}</span>
                 ) : (
                     <span className="statusbar-muted">
                         {file ? 'No cell selected' : 'No file open — use File ▸ Open…'}

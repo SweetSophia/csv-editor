@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 
+export type CommitDirection = 'none' | 'up' | 'down' | 'left' | 'right';
+
 interface CellEditorProps {
     initialValue: string;
     width: number;
     height: number;
-    onCommit: (value: string) => void;
+    onCommit: (value: string, direction: CommitDirection) => void;
     onCancel: () => void;
 }
 
 // CellEditor renders an <input> overlay positioned inside a table cell.
 // IME safety: WebKit fires keydown(Enter) and compositionend in different
-// orders depending on the IME / browser version. We combine three guards:
+// orders depending on the IME / browser version. We combine four guards:
 //   1. e.nativeEvent.isComposing      (modern, works in most cases)
 //   2. composingRef                   (catches isComposing=false during composition)
 //   3. compositionEndAt timing buffer (50ms after compositionend → still IME)
@@ -35,10 +37,10 @@ export function CellEditor({
         el.select();
     }, []);
 
-    const commit = () => {
+    const commit = (direction: CommitDirection) => {
         if (settledRef.current) return;
         settledRef.current = true;
-        onCommit(value);
+        onCommit(value, direction);
     };
 
     const cancel = () => {
@@ -75,16 +77,16 @@ export function CellEditor({
                 if (isIME(e)) return;
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    commit();
+                    commit(e.shiftKey ? 'up' : 'down');
                 } else if (e.key === 'Escape') {
                     e.preventDefault();
                     cancel();
                 } else if (e.key === 'Tab') {
                     e.preventDefault();
-                    commit();
+                    commit(e.shiftKey ? 'left' : 'right');
                 }
             }}
-            onBlur={commit}
+            onBlur={() => commit('none')}
         />
     );
 }

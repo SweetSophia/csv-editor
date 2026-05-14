@@ -6,14 +6,15 @@ import {
     type ColumnDef,
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { CellEditor } from './CellEditor';
+import { CellEditor, type CommitDirection } from './CellEditor';
+import {
+    bounds,
+    type CellPosition,
+    type Selection,
+    singleCell,
+} from '../selection';
 
 type Row = string[];
-
-export interface SelectedCell {
-    rowIndex: number;
-    columnIndex: number;
-}
 
 export interface EditingCell {
     rowIndex: number;
@@ -24,14 +25,16 @@ interface VirtualTableProps {
     header: string[] | null;
     rows: string[][];
     maxColumns: number;
-    selected: SelectedCell | null;
-    onSelect: (cell: SelectedCell) => void;
+    selection: Selection | null;
+    onSelectionChange: (sel: Selection) => void;
     editing: EditingCell | null;
     onStartEdit: (cell: EditingCell) => void;
-    onCommitEdit: (value: string) => void;
+    onCommitEdit: (value: string, direction: CommitDirection) => void;
     onCancelEdit: () => void;
     onUndo: () => void;
     onRedo: () => void;
+    onCopy: () => void;
+    onPaste: () => void;
 }
 
 const ROW_NUMBER_WIDTH = 64;
@@ -43,14 +46,16 @@ export function VirtualTable({
     header,
     rows,
     maxColumns,
-    selected,
-    onSelect,
+    selection,
+    onSelectionChange,
     editing,
     onStartEdit,
     onCommitEdit,
     onCancelEdit,
     onUndo,
     onRedo,
+    onCopy,
+    onPaste,
 }: VirtualTableProps) {
     const columns = useMemo<ColumnDef<Row>[]>(() => {
         const cols: ColumnDef<Row>[] = [];
@@ -78,6 +83,7 @@ export function VirtualTable({
     });
 
     const scrollRef = useRef<HTMLDivElement>(null);
+    const draggingRef = useRef(false);
 
     const rowVirtualizer = useVirtualizer({
         count: rows.length,
@@ -93,36 +99,41 @@ export function VirtualTable({
         (rowIndex: number, columnIndex: number) => {
             const container = scrollRef.current;
             if (!container) return;
-
             const rowTop = HEAD_HEIGHT + rowIndex * ROW_HEIGHT;
             const rowBottom = rowTop + ROW_HEIGHT;
             const viewTop = container.scrollTop + HEAD_HEIGHT;
             const viewBottom = container.scrollTop + container.clientHeight;
-            if (rowTop < viewTop) {
-                container.scrollTop = rowTop - HEAD_HEIGHT;
-            } else if (rowBottom > viewBottom) {
-                container.scrollTop = rowBottom - container.clientHeight;
-            }
+            if (rowTop < viewTop) container.scrollTop = rowTop - HEAD_HEIGHT;
+            else if (rowBottom > viewBottom) container.scrollTop = rowBottom - container.clientHeight;
 
             const cellLeft = ROW_NUMBER_WIDTH + columnIndex * DEFAULT_COL_WIDTH;
             const cellRight = cellLeft + DEFAULT_COL_WIDTH;
-            if (cellLeft < container.scrollLeft + ROW_NUMBER_WIDTH) {
+            if (cellLeft < container.scrollLeft + ROW_NUMBER_WIDTH)
                 container.scrollLeft = cellLeft - ROW_NUMBER_WIDTH;
-            } else if (cellRight > container.scrollLeft + container.clientWidth) {
+            else if (cellRight > container.scrollLeft + container.clientWidth)
                 container.scrollLeft = cellRight - container.clientWidth;
-            }
         },
         [],
     );
 
-    const moveSelection = useCallback(
-        (rowIndex: number, columnIndex: number) => {
-            const r = Math.max(0, Math.min(rows.length - 1, rowIndex));
-            const c = Math.max(0, Math.min(maxColumns - 1, columnIndex));
-            onSelect({ rowIndex: r, columnIndex: c });
-            ensureCellVisible(r, c);
+    const clamp = useCallback(
+        (p: CellPosition): CellPosition => ({
+            rowIndex: Math.max(0, Math.min(rows.length - 1, p.rowIndex)),
+            columnIndex: Math.max(0, Math.min(maxColumns - 1, p.columnIndex)),
+        }),
+        [rows.length, maxColumns],
+    );
+
+    const setFocus = useCallback(
+        (focus: CellPosition, extend: boolean) => {
+            const f = clamp(focus);
+            const next: Selection = extend && selection
+                ? { anchor: selection.anchor, focus: f }
+                : singleCell(f);
+            onSelectionChange(next);
+            ensureCellVisible(f.rowIndex, f.columnIndex);
         },
-        [rows.length, maxColumns, onSelect, ensureCellVisible],
+        [clamp, selection, onSelectionChange, ensureCellVisible],
     );
 
     const handleKeyDown = useCallback(
@@ -132,7 +143,6 @@ export function VirtualTable({
 
             const cmdOrCtrl = e.metaKey || e.ctrlKey;
 
-            // Undo / Redo (Cmd+Z / Cmd+Shift+Z / Cmd+Y).
             if (cmdOrCtrl && e.key.toLowerCase() === 'z' && !e.shiftKey) {
                 e.preventDefault();
                 onUndo();
@@ -147,11 +157,46 @@ export function VirtualTable({
                 onRedo();
                 return;
             }
-
-            // Enter / F2 start cell edit on the current selection.
-            if ((e.key === 'Enter' || e.key === 'F2') && selected) {
+            if (cmdOrCtrl && e.key.toLowerCase() === 'c') {
                 e.preventDefault();
-                onStartEdit(selected);
+                onCopy();
+                return;
+            }
+            if (cmdOrCtrl && e.key.toLowerCase() === 'v') {
+                e.preventDefault();
+                onPaste();
+                return;
+            }
+            if (cmdOrCtrl && e.key.toLowerCase() === 'a') {
+                e.preventDefault();
+                onSelectionChange({
+                    anchor: { rowIndex: 0, columnIndex: 0 },
+                    focus: {
+                        rowIndex: rows.length - 1,
+                        columnIndex: maxColumns - 1,
+                    },
+                });
+                return;
+            }
+
+            if ((e.key === 'Enter' || e.key === 'F2') && selection) {
+                e.preventDefault();
+                onStartEdit(selection.focus);
+                return;
+            }
+
+            // Tab moves the selection horizontally (Excel-style) and is
+            // trapped so focus does not escape to the status bar.
+            if (e.key === 'Tab' && selection) {
+                e.preventDefault();
+                const dir = e.shiftKey ? -1 : 1;
+                setFocus(
+                    {
+                        rowIndex: selection.focus.rowIndex,
+                        columnIndex: selection.focus.columnIndex + dir,
+                    },
+                    false,
+                );
                 return;
             }
 
@@ -167,9 +212,9 @@ export function VirtualTable({
             ];
             if (!navKeys.includes(e.key)) return;
 
-            if (selected == null) {
+            if (selection == null) {
                 e.preventDefault();
-                moveSelection(0, 0);
+                setFocus({ rowIndex: 0, columnIndex: 0 }, false);
                 return;
             }
 
@@ -178,21 +223,23 @@ export function VirtualTable({
                 Math.floor(((scrollRef.current?.clientHeight ?? 0) - HEAD_HEIGHT) / ROW_HEIGHT) - 1,
             );
 
-            let r = selected.rowIndex;
-            let c = selected.columnIndex;
+            let { rowIndex: r, columnIndex: c } = selection.focus;
+            // Cmd+arrow jumps to the edge regardless of Shift. Shift just
+            // controls whether the anchor stays put (extend) or collapses.
+            const cmdJump = cmdOrCtrl;
 
             switch (e.key) {
                 case 'ArrowUp':
-                    r = cmdOrCtrl ? 0 : r - 1;
+                    r = cmdJump ? 0 : r - 1;
                     break;
                 case 'ArrowDown':
-                    r = cmdOrCtrl ? rows.length - 1 : r + 1;
+                    r = cmdJump ? rows.length - 1 : r + 1;
                     break;
                 case 'ArrowLeft':
-                    c = cmdOrCtrl ? 0 : c - 1;
+                    c = cmdJump ? 0 : c - 1;
                     break;
                 case 'ArrowRight':
-                    c = cmdOrCtrl ? maxColumns - 1 : c + 1;
+                    c = cmdJump ? maxColumns - 1 : c + 1;
                     break;
                 case 'Home':
                     c = 0;
@@ -207,22 +254,42 @@ export function VirtualTable({
                     r = r + pageSize;
                     break;
             }
-
             e.preventDefault();
-            moveSelection(r, c);
+            setFocus({ rowIndex: r, columnIndex: c }, e.shiftKey);
         },
-        [rows.length, maxColumns, selected, editing, moveSelection, onStartEdit, onUndo, onRedo],
+        [
+            rows.length,
+            maxColumns,
+            selection,
+            editing,
+            setFocus,
+            onSelectionChange,
+            onStartEdit,
+            onUndo,
+            onRedo,
+            onCopy,
+            onPaste,
+        ],
     );
 
     useEffect(() => {
-        if (!editing) {
-            scrollRef.current?.focus({ preventScroll: true });
-        }
+        if (!editing) scrollRef.current?.focus({ preventScroll: true });
     }, [editing]);
 
     useEffect(() => {
         scrollRef.current?.focus({ preventScroll: true });
     }, [rows]);
+
+    // Global mouseup ends a drag selection started inside the table.
+    useEffect(() => {
+        const onUp = () => {
+            draggingRef.current = false;
+        };
+        window.addEventListener('mouseup', onUp);
+        return () => window.removeEventListener('mouseup', onUp);
+    }, []);
+
+    const selBounds = selection ? bounds(selection) : null;
 
     return (
         <div
@@ -267,10 +334,18 @@ export function VirtualTable({
                             {tableRow.getVisibleCells().map((cell, colIdx) => {
                                 const isRowNum = colIdx === 0;
                                 const dataColIdx = colIdx - 1;
-                                const isSelected =
+                                const inSelection =
                                     !isRowNum &&
-                                    selected?.rowIndex === v.index &&
-                                    selected?.columnIndex === dataColIdx;
+                                    selBounds != null &&
+                                    v.index >= selBounds.r0 &&
+                                    v.index <= selBounds.r1 &&
+                                    dataColIdx >= selBounds.c0 &&
+                                    dataColIdx <= selBounds.c1;
+                                const isFocus =
+                                    !isRowNum &&
+                                    selection != null &&
+                                    selection.focus.rowIndex === v.index &&
+                                    selection.focus.columnIndex === dataColIdx;
                                 const isEditing =
                                     !isRowNum &&
                                     editing?.rowIndex === v.index &&
@@ -278,35 +353,53 @@ export function VirtualTable({
                                 const className =
                                     'vt-cell' +
                                     (isRowNum ? ' vt-cell-rownum' : '') +
-                                    (isSelected ? ' vt-cell-selected' : '') +
+                                    (inSelection ? ' vt-cell-selected' : '') +
+                                    (isFocus ? ' vt-cell-focus' : '') +
                                     (isEditing ? ' vt-cell-editing' : '');
                                 const cellWidth = cell.column.getSize();
+                                const cellHandlers = isRowNum
+                                    ? {}
+                                    : {
+                                          onMouseDown: (
+                                              e: React.MouseEvent<HTMLDivElement>,
+                                          ) => {
+                                              if (e.button !== 0) return;
+                                              scrollRef.current?.focus({ preventScroll: true });
+                                              const pos: CellPosition = {
+                                                  rowIndex: v.index,
+                                                  columnIndex: dataColIdx,
+                                              };
+                                              draggingRef.current = true;
+                                              setFocus(pos, e.shiftKey);
+                                          },
+                                          onMouseEnter: (
+                                              e: React.MouseEvent<HTMLDivElement>,
+                                          ) => {
+                                              if (!draggingRef.current) return;
+                                              if (e.buttons === 0) {
+                                                  draggingRef.current = false;
+                                                  return;
+                                              }
+                                              setFocus(
+                                                  {
+                                                      rowIndex: v.index,
+                                                      columnIndex: dataColIdx,
+                                                  },
+                                                  true,
+                                              );
+                                          },
+                                          onDoubleClick: () =>
+                                              onStartEdit({
+                                                  rowIndex: v.index,
+                                                  columnIndex: dataColIdx,
+                                              }),
+                                      };
                                 return (
                                     <div
                                         key={cell.id}
                                         className={className}
                                         style={{ width: cellWidth }}
-                                        onClick={
-                                            isRowNum
-                                                ? undefined
-                                                : () => {
-                                                      scrollRef.current?.focus({ preventScroll: true });
-                                                      onSelect({
-                                                          rowIndex: v.index,
-                                                          columnIndex: dataColIdx,
-                                                      });
-                                                  }
-                                        }
-                                        onDoubleClick={
-                                            isRowNum
-                                                ? undefined
-                                                : () => {
-                                                      onStartEdit({
-                                                          rowIndex: v.index,
-                                                          columnIndex: dataColIdx,
-                                                      });
-                                                  }
-                                        }
+                                        {...cellHandlers}
                                     >
                                         {isEditing ? (
                                             <CellEditor
