@@ -3,15 +3,14 @@
 All notable changes to **csv-editor** are recorded in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and the project will adhere to [Semantic Versioning](https://semver.org/)
-once it cuts its first tagged release.
+and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Initial development series — Phase 1 through Phase 3 of the RFP have all
-landed. The application is feature-complete for the planned editor scope
-and ready for a 0.1.0 cut after the GitHub remote and CI/icon polish are
-in place.
+## [0.1.0] - 2026-05-14
+
+Initial release — Phase 1 through Phase 3 of the RFP feature set, ready
+for daily use as a CSV/TSV editor on macOS (Apple Silicon) and Windows 11.
 
 ### Added
 
@@ -81,3 +80,6 @@ in place.
   require bundling the runtime separately).
 - Apple Silicon prioritized; Intel macOS may work but is not actively
   validated.
+
+[Unreleased]: https://github.com/nlink-jp/csv-editor/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/nlink-jp/csv-editor/releases/tag/v0.1.0
