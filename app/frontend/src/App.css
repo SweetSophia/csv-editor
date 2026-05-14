@@ -237,6 +237,49 @@ html, body {
     line-height: 1;
 }
 
+/* ------------------- Context menu ------------------- */
+
+.context-menu {
+    position: fixed;
+    z-index: 100;
+    min-width: 200px;
+    padding: 0.25rem 0;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+    font-size: 0.85rem;
+    user-select: none;
+}
+
+.context-menu-item {
+    display: block;
+    width: 100%;
+    padding: 0.35rem 0.85rem;
+    background: transparent;
+    border: none;
+    color: var(--fg);
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: inherit;
+}
+
+.context-menu-item:hover:not(:disabled) {
+    background: var(--accent-bg);
+}
+
+.context-menu-item:disabled {
+    color: var(--fg-muted);
+    cursor: default;
+}
+
+.context-menu-sep {
+    height: 1px;
+    background: var(--border);
+    margin: 0.25rem 0;
+}
+
 .statusbar-select-wrap {
     border-radius: 3px;
 }

@@ -21,6 +21,11 @@ export interface EditingCell {
     columnIndex: number;
 }
 
+export type ContextMenuTarget =
+    | { kind: 'cell'; rowIndex: number; columnIndex: number }
+    | { kind: 'row'; rowIndex: number }
+    | { kind: 'column'; columnIndex: number };
+
 interface VirtualTableProps {
     header: string[] | null;
     rows: string[][];
@@ -34,7 +39,10 @@ interface VirtualTableProps {
     onUndo: () => void;
     onRedo: () => void;
     onCopy: () => void;
+    onCut: () => void;
     onPaste: () => void;
+    onClear: () => void;
+    onContextMenu: (e: React.MouseEvent, target: ContextMenuTarget) => void;
 }
 
 const ROW_NUMBER_WIDTH = 64;
@@ -55,7 +63,10 @@ export function VirtualTable({
     onUndo,
     onRedo,
     onCopy,
+    onCut,
     onPaste,
+    onClear,
+    onContextMenu,
 }: VirtualTableProps) {
     const columns = useMemo<ColumnDef<Row>[]>(() => {
         const cols: ColumnDef<Row>[] = [];
@@ -94,6 +105,8 @@ export function VirtualTable({
     });
 
     const totalWidth = ROW_NUMBER_WIDTH + maxColumns * DEFAULT_COL_WIDTH;
+    const lastRow = Math.max(0, rows.length - 1);
+    const lastCol = Math.max(0, maxColumns - 1);
 
     const ensureCellVisible = useCallback(
         (rowIndex: number, columnIndex: number) => {
@@ -118,10 +131,10 @@ export function VirtualTable({
 
     const clamp = useCallback(
         (p: CellPosition): CellPosition => ({
-            rowIndex: Math.max(0, Math.min(rows.length - 1, p.rowIndex)),
-            columnIndex: Math.max(0, Math.min(maxColumns - 1, p.columnIndex)),
+            rowIndex: Math.max(0, Math.min(lastRow, p.rowIndex)),
+            columnIndex: Math.max(0, Math.min(lastCol, p.columnIndex)),
         }),
-        [rows.length, maxColumns],
+        [lastRow, lastCol],
     );
 
     const setFocus = useCallback(
@@ -134,6 +147,42 @@ export function VirtualTable({
             ensureCellVisible(f.rowIndex, f.columnIndex);
         },
         [clamp, selection, onSelectionChange, ensureCellVisible],
+    );
+
+    const selectRow = useCallback(
+        (rowIndex: number, extend: boolean) => {
+            scrollRef.current?.focus({ preventScroll: true });
+            const next: Selection = extend && selection
+                ? {
+                      anchor: selection.anchor,
+                      focus: { rowIndex, columnIndex: lastCol },
+                  }
+                : {
+                      anchor: { rowIndex, columnIndex: 0 },
+                      focus: { rowIndex, columnIndex: lastCol },
+                  };
+            onSelectionChange(next);
+            ensureCellVisible(rowIndex, extend ? next.focus.columnIndex : 0);
+        },
+        [selection, lastCol, onSelectionChange, ensureCellVisible],
+    );
+
+    const selectColumn = useCallback(
+        (columnIndex: number, extend: boolean) => {
+            scrollRef.current?.focus({ preventScroll: true });
+            const next: Selection = extend && selection
+                ? {
+                      anchor: selection.anchor,
+                      focus: { rowIndex: lastRow, columnIndex },
+                  }
+                : {
+                      anchor: { rowIndex: 0, columnIndex },
+                      focus: { rowIndex: lastRow, columnIndex },
+                  };
+            onSelectionChange(next);
+            ensureCellVisible(extend ? next.focus.rowIndex : 0, columnIndex);
+        },
+        [selection, lastRow, onSelectionChange, ensureCellVisible],
     );
 
     const handleKeyDown = useCallback(
@@ -162,6 +211,11 @@ export function VirtualTable({
                 onCopy();
                 return;
             }
+            if (cmdOrCtrl && e.key.toLowerCase() === 'x') {
+                e.preventDefault();
+                onCut();
+                return;
+            }
             if (cmdOrCtrl && e.key.toLowerCase() === 'v') {
                 e.preventDefault();
                 onPaste();
@@ -171,11 +225,16 @@ export function VirtualTable({
                 e.preventDefault();
                 onSelectionChange({
                     anchor: { rowIndex: 0, columnIndex: 0 },
-                    focus: {
-                        rowIndex: rows.length - 1,
-                        columnIndex: maxColumns - 1,
-                    },
+                    focus: { rowIndex: lastRow, columnIndex: lastCol },
                 });
+                return;
+            }
+
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selection) {
+                    e.preventDefault();
+                    onClear();
+                }
                 return;
             }
 
@@ -185,8 +244,6 @@ export function VirtualTable({
                 return;
             }
 
-            // Tab moves the selection horizontally (Excel-style) and is
-            // trapped so focus does not escape to the status bar.
             if (e.key === 'Tab' && selection) {
                 e.preventDefault();
                 const dir = e.shiftKey ? -1 : 1;
@@ -224,8 +281,6 @@ export function VirtualTable({
             );
 
             let { rowIndex: r, columnIndex: c } = selection.focus;
-            // Cmd+arrow jumps to the edge regardless of Shift. Shift just
-            // controls whether the anchor stays put (extend) or collapses.
             const cmdJump = cmdOrCtrl;
 
             switch (e.key) {
@@ -233,19 +288,19 @@ export function VirtualTable({
                     r = cmdJump ? 0 : r - 1;
                     break;
                 case 'ArrowDown':
-                    r = cmdJump ? rows.length - 1 : r + 1;
+                    r = cmdJump ? lastRow : r + 1;
                     break;
                 case 'ArrowLeft':
                     c = cmdJump ? 0 : c - 1;
                     break;
                 case 'ArrowRight':
-                    c = cmdJump ? maxColumns - 1 : c + 1;
+                    c = cmdJump ? lastCol : c + 1;
                     break;
                 case 'Home':
                     c = 0;
                     break;
                 case 'End':
-                    c = maxColumns - 1;
+                    c = lastCol;
                     break;
                 case 'PageUp':
                     r = r - pageSize;
@@ -260,6 +315,8 @@ export function VirtualTable({
         [
             rows.length,
             maxColumns,
+            lastRow,
+            lastCol,
             selection,
             editing,
             setFocus,
@@ -268,7 +325,9 @@ export function VirtualTable({
             onUndo,
             onRedo,
             onCopy,
+            onCut,
             onPaste,
+            onClear,
         ],
     );
 
@@ -280,7 +339,6 @@ export function VirtualTable({
         scrollRef.current?.focus({ preventScroll: true });
     }, [rows]);
 
-    // Global mouseup ends a drag selection started inside the table.
     useEffect(() => {
         const onUp = () => {
             draggingRef.current = false;
@@ -308,15 +366,36 @@ export function VirtualTable({
                 <div className="vt-head" style={{ width: totalWidth, height: HEAD_HEIGHT }}>
                     {table.getHeaderGroups().map((hg) => (
                         <div className="vt-row vt-row-head" key={hg.id}>
-                            {hg.headers.map((h) => (
-                                <div
-                                    className="vt-cell vt-cell-head"
-                                    key={h.id}
-                                    style={{ width: h.getSize() }}
-                                >
-                                    {flexRender(h.column.columnDef.header, h.getContext())}
-                                </div>
-                            ))}
+                            {hg.headers.map((h, idx) => {
+                                const isRowNumHeader = idx === 0;
+                                const dataColIdx = idx - 1;
+                                const headerHandlers = isRowNumHeader
+                                    ? {}
+                                    : {
+                                          onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => {
+                                              if (e.button !== 0) return;
+                                              e.preventDefault();
+                                              window.getSelection()?.removeAllRanges();
+                                              selectColumn(dataColIdx, e.shiftKey);
+                                          },
+                                          onContextMenu: (e: React.MouseEvent<HTMLDivElement>) => {
+                                              onContextMenu(e, {
+                                                  kind: 'column',
+                                                  columnIndex: dataColIdx,
+                                              });
+                                          },
+                                      };
+                                return (
+                                    <div
+                                        className="vt-cell vt-cell-head"
+                                        key={h.id}
+                                        style={{ width: h.getSize() }}
+                                        {...headerHandlers}
+                                    >
+                                        {flexRender(h.column.columnDef.header, h.getContext())}
+                                    </div>
+                                );
+                            })}
                         </div>
                     ))}
                 </div>
@@ -358,12 +437,24 @@ export function VirtualTable({
                                     (isEditing ? ' vt-cell-editing' : '');
                                 const cellWidth = cell.column.getSize();
                                 const cellHandlers = isRowNum
-                                    ? {}
-                                    : {
-                                          onMouseDown: (
-                                              e: React.MouseEvent<HTMLDivElement>,
-                                          ) => {
+                                    ? {
+                                          onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => {
                                               if (e.button !== 0) return;
+                                              e.preventDefault();
+                                              window.getSelection()?.removeAllRanges();
+                                              selectRow(v.index, e.shiftKey);
+                                          },
+                                          onContextMenu: (e: React.MouseEvent<HTMLDivElement>) => {
+                                              onContextMenu(e, { kind: 'row', rowIndex: v.index });
+                                          },
+                                      }
+                                    : {
+                                          onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => {
+                                              if (e.button !== 0) return;
+                                              if (e.shiftKey) {
+                                                  e.preventDefault();
+                                                  window.getSelection()?.removeAllRanges();
+                                              }
                                               scrollRef.current?.focus({ preventScroll: true });
                                               const pos: CellPosition = {
                                                   rowIndex: v.index,
@@ -372,9 +463,7 @@ export function VirtualTable({
                                               draggingRef.current = true;
                                               setFocus(pos, e.shiftKey);
                                           },
-                                          onMouseEnter: (
-                                              e: React.MouseEvent<HTMLDivElement>,
-                                          ) => {
+                                          onMouseEnter: (e: React.MouseEvent<HTMLDivElement>) => {
                                               if (!draggingRef.current) return;
                                               if (e.buttons === 0) {
                                                   draggingRef.current = false;
@@ -393,6 +482,13 @@ export function VirtualTable({
                                                   rowIndex: v.index,
                                                   columnIndex: dataColIdx,
                                               }),
+                                          onContextMenu: (e: React.MouseEvent<HTMLDivElement>) => {
+                                              onContextMenu(e, {
+                                                  kind: 'cell',
+                                                  rowIndex: v.index,
+                                                  columnIndex: dataColIdx,
+                                              });
+                                          },
                                       };
                                 return (
                                     <div

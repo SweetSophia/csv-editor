@@ -1,26 +1,23 @@
 import type { main } from '../wailsjs/go/models';
 
-// Edit describes a single cell change. Used both as input (caller supplies
-// rowIndex, columnIndex, value — the reducer computes `before`) and as the
-// historical record (after the reducer fills in `before`).
-export interface Edit {
+// PendingEdit is what callers supply to APPLY_EDITS. The reducer reads
+// the current value to record it as the "before" half of the snapshot.
+export interface PendingEdit {
     rowIndex: number;
     columnIndex: number;
-    before: string;
-    after: string;
+    value: string;
 }
 
-// HistoryEntry groups edits that should be undone or redone together
-// (single-cell edit, multi-cell paste, etc.). rowCountBefore and
-// rowLengthsBefore let UNDO restore the original table dimensions when
-// the action extended rows or columns.
+// HistoryEntry stores a complete before/after pair for both rows and the
+// header (if present). This makes undo/redo trivial — assign the snapshot
+// back — and correctly handles structural changes (insert/delete row/col)
+// alongside cell edits. The rows arrays share references for unchanged rows
+// so the memory cost is just the modified rows.
 export interface HistoryEntry {
-    edits: Edit[];
-    rowCountBefore: number;
-    // Only contains rows that existed before the entry AND were
-    // extended in length. Rows that didn't exist before are reflected
-    // by rowCountBefore alone.
-    rowLengthsBefore: Record<number, number>;
+    rowsBefore: string[][];
+    rowsAfter: string[][];
+    headerBefore: string[] | null;
+    headerAfter: string[] | null;
 }
 
 export interface EditableState {
@@ -43,16 +40,23 @@ export function isDirty(state: EditableState): boolean {
     return state.history.length !== state.savedHistoryLength;
 }
 
-// Pending edit as supplied by the UI (before reading current state).
-export interface PendingEdit {
-    rowIndex: number;
-    columnIndex: number;
-    value: string;
+export interface Rect {
+    r0: number;
+    c0: number;
+    r1: number;
+    c1: number;
 }
 
 export type Action =
     | { type: 'LOAD'; payload: main.FileLoadResult }
     | { type: 'APPLY_EDITS'; edits: PendingEdit[] }
+    | { type: 'CLEAR_CELLS'; rect: Rect }
+    | { type: 'INSERT_ROWS'; atIndex: number; count: number }
+    | { type: 'DELETE_ROWS'; startIndex: number; count: number }
+    | { type: 'DUPLICATE_ROWS'; startIndex: number; count: number }
+    | { type: 'INSERT_COLS'; atIndex: number; count: number }
+    | { type: 'DELETE_COLS'; startIndex: number; count: number }
+    | { type: 'DUPLICATE_COLS'; startIndex: number; count: number }
     | { type: 'UNDO' }
     | { type: 'REDO' }
     | { type: 'SAVED' }
@@ -60,7 +64,6 @@ export type Action =
     | { type: 'CLEAR' };
 
 function setCell(rows: string[][], r: number, c: number, value: string): string[][] {
-    // Pad rows to reach r when paste extends past current data.
     let next: string[][];
     if (r >= rows.length) {
         next = rows.slice();
@@ -73,6 +76,34 @@ function setCell(rows: string[][], r: number, c: number, value: string): string[
     targetRow[c] = value;
     next[r] = targetRow;
     return next;
+}
+
+function maxColumnsOf(rows: string[][], header: string[] | null | undefined): number {
+    let max = header?.length ?? 0;
+    for (const row of rows) if (row.length > max) max = row.length;
+    return max;
+}
+
+function pushHistory(
+    state: EditableState,
+    rowsAfter: string[][],
+    headerAfter: string[] | null,
+): EditableState {
+    return {
+        ...state,
+        rows: rowsAfter,
+        file: state.file ? { ...state.file, header: headerAfter ?? [] } : state.file,
+        history: [
+            ...state.history,
+            {
+                rowsBefore: state.rows,
+                rowsAfter,
+                headerBefore: state.file?.header ?? null,
+                headerAfter,
+            },
+        ],
+        future: [],
+    };
 }
 
 export function reducer(state: EditableState, action: Action): EditableState {
@@ -88,68 +119,160 @@ export function reducer(state: EditableState, action: Action): EditableState {
 
         case 'APPLY_EDITS': {
             if (!state.file) return state;
-            const rowCountBefore = state.rows.length;
-            const rowLengthsBefore: Record<number, number> = {};
             let rows = state.rows;
-            const entries: Edit[] = [];
+            let touched = false;
             for (const e of action.edits) {
                 const before = rows[e.rowIndex]?.[e.columnIndex] ?? '';
                 if (before === e.value) continue;
-                // Capture row length the first time we touch each pre-existing row.
-                if (
-                    e.rowIndex < rowCountBefore &&
-                    rowLengthsBefore[e.rowIndex] === undefined
-                ) {
-                    rowLengthsBefore[e.rowIndex] = state.rows[e.rowIndex].length;
-                }
-                entries.push({
-                    rowIndex: e.rowIndex,
-                    columnIndex: e.columnIndex,
-                    before,
-                    after: e.value,
-                });
                 rows = setCell(rows, e.rowIndex, e.columnIndex, e.value);
+                touched = true;
             }
-            if (entries.length === 0) return state;
-            return {
-                ...state,
-                rows,
-                history: [
-                    ...state.history,
-                    { edits: entries, rowCountBefore, rowLengthsBefore },
-                ],
-                future: [],
-            };
+            if (!touched) return state;
+            return pushHistory(state, rows, state.file.header);
+        }
+
+        case 'CLEAR_CELLS': {
+            if (!state.file) return state;
+            const { r0, c0, r1, c1 } = action.rect;
+            let rows = state.rows;
+            let touched = false;
+            for (let r = r0; r <= r1 && r < rows.length; r++) {
+                const rowLen = rows[r]?.length ?? 0;
+                for (let c = c0; c <= c1 && c < rowLen; c++) {
+                    if (rows[r][c] !== '') {
+                        rows = setCell(rows, r, c, '');
+                        touched = true;
+                    }
+                }
+            }
+            if (!touched) return state;
+            return pushHistory(state, rows, state.file.header);
+        }
+
+        case 'INSERT_ROWS': {
+            if (!state.file) return state;
+            const { atIndex, count } = action;
+            if (count <= 0) return state;
+            const cols = maxColumnsOf(state.rows, state.file.header);
+            const insertions: string[][] = Array.from({ length: count }, () =>
+                Array(cols).fill(''),
+            );
+            const clamped = Math.max(0, Math.min(state.rows.length, atIndex));
+            const rowsAfter = [
+                ...state.rows.slice(0, clamped),
+                ...insertions,
+                ...state.rows.slice(clamped),
+            ];
+            return pushHistory(state, rowsAfter, state.file.header);
+        }
+
+        case 'DELETE_ROWS': {
+            if (!state.file) return state;
+            const { startIndex, count } = action;
+            if (count <= 0 || startIndex >= state.rows.length) return state;
+            const rowsAfter = [
+                ...state.rows.slice(0, startIndex),
+                ...state.rows.slice(startIndex + count),
+            ];
+            if (rowsAfter.length === state.rows.length) return state;
+            return pushHistory(state, rowsAfter, state.file.header);
+        }
+
+        case 'DUPLICATE_ROWS': {
+            if (!state.file) return state;
+            const { startIndex, count } = action;
+            if (count <= 0 || startIndex >= state.rows.length) return state;
+            const end = Math.min(startIndex + count, state.rows.length);
+            const duplicates = state.rows.slice(startIndex, end).map((r) => r.slice());
+            const rowsAfter = [
+                ...state.rows.slice(0, end),
+                ...duplicates,
+                ...state.rows.slice(end),
+            ];
+            return pushHistory(state, rowsAfter, state.file.header);
+        }
+
+        case 'INSERT_COLS': {
+            if (!state.file) return state;
+            const { atIndex, count } = action;
+            if (count <= 0) return state;
+            const fillers = Array(count).fill('');
+            const rowsAfter = state.rows.map((row) => {
+                const newRow = row.slice();
+                while (newRow.length < atIndex) newRow.push('');
+                newRow.splice(atIndex, 0, ...fillers);
+                return newRow;
+            });
+            let headerAfter = state.file.header;
+            if (state.file.hasHeader && state.file.header) {
+                const newHeader = state.file.header.slice();
+                while (newHeader.length < atIndex) newHeader.push('');
+                newHeader.splice(atIndex, 0, ...Array(count).fill(''));
+                headerAfter = newHeader;
+            }
+            return pushHistory(state, rowsAfter, headerAfter);
+        }
+
+        case 'DELETE_COLS': {
+            if (!state.file) return state;
+            const { startIndex, count } = action;
+            if (count <= 0) return state;
+            const rowsAfter = state.rows.map((row) => {
+                if (row.length <= startIndex) return row;
+                const newRow = row.slice();
+                newRow.splice(startIndex, count);
+                return newRow;
+            });
+            let headerAfter = state.file.header;
+            if (
+                state.file.hasHeader &&
+                state.file.header &&
+                state.file.header.length > startIndex
+            ) {
+                const newHeader = state.file.header.slice();
+                newHeader.splice(startIndex, count);
+                headerAfter = newHeader;
+            }
+            return pushHistory(state, rowsAfter, headerAfter);
+        }
+
+        case 'DUPLICATE_COLS': {
+            if (!state.file) return state;
+            const { startIndex, count } = action;
+            if (count <= 0) return state;
+            const insertAt = startIndex + count;
+            const rowsAfter = state.rows.map((row) => {
+                if (row.length <= startIndex) return row;
+                const newRow = row.slice();
+                const slice = newRow.slice(startIndex, startIndex + count);
+                while (slice.length < count) slice.push('');
+                newRow.splice(insertAt, 0, ...slice);
+                return newRow;
+            });
+            let headerAfter = state.file.header;
+            if (state.file.hasHeader && state.file.header) {
+                const newHeader = state.file.header.slice();
+                if (newHeader.length > startIndex) {
+                    const slice = newHeader.slice(startIndex, startIndex + count);
+                    while (slice.length < count) slice.push('');
+                    newHeader.splice(insertAt, 0, ...slice);
+                }
+                headerAfter = newHeader;
+            }
+            return pushHistory(state, rowsAfter, headerAfter);
         }
 
         case 'UNDO': {
             if (state.history.length === 0) return state;
             const entry = state.history[state.history.length - 1];
-            let rows = state.rows;
-            // Reverse order so overlapping edits within an entry undo correctly.
-            for (let i = entry.edits.length - 1; i >= 0; i--) {
-                const e = entry.edits[i];
-                rows = setCell(rows, e.rowIndex, e.columnIndex, e.before);
-            }
-            // Shrink table dimensions if this entry had extended them.
-            if (rows.length > entry.rowCountBefore) {
-                rows = rows.slice(0, entry.rowCountBefore);
-            }
-            const lengthsToRestore = entry.rowLengthsBefore;
-            const needsTrim = Object.keys(lengthsToRestore).some(
-                (k) => rows[Number(k)]?.length !== lengthsToRestore[Number(k)],
-            );
-            if (needsTrim) {
-                rows = rows.map((row, i) => {
-                    const orig = lengthsToRestore[i];
-                    return orig !== undefined && row.length > orig
-                        ? row.slice(0, orig)
-                        : row;
-                });
-            }
+            const headerChanged = entry.headerBefore !== entry.headerAfter;
             return {
                 ...state,
-                rows,
+                rows: entry.rowsBefore,
+                file:
+                    state.file && headerChanged
+                        ? { ...state.file, header: entry.headerBefore ?? [] }
+                        : state.file,
                 history: state.history.slice(0, -1),
                 future: [...state.future, entry],
             };
@@ -158,13 +281,14 @@ export function reducer(state: EditableState, action: Action): EditableState {
         case 'REDO': {
             if (state.future.length === 0) return state;
             const entry = state.future[state.future.length - 1];
-            let rows = state.rows;
-            for (const e of entry.edits) {
-                rows = setCell(rows, e.rowIndex, e.columnIndex, e.after);
-            }
+            const headerChanged = entry.headerBefore !== entry.headerAfter;
             return {
                 ...state,
-                rows,
+                rows: entry.rowsAfter,
+                file:
+                    state.file && headerChanged
+                        ? { ...state.file, header: entry.headerAfter ?? [] }
+                        : state.file,
                 history: [...state.history, entry],
                 future: state.future.slice(0, -1),
             };

@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import './App.css';
 import { StatusBar } from './components/StatusBar';
-import { VirtualTable, type EditingCell } from './components/VirtualTable';
+import {
+    VirtualTable,
+    type ContextMenuTarget,
+    type EditingCell,
+} from './components/VirtualTable';
 import type { CommitDirection } from './components/CellEditor';
+import { ContextMenu, type MenuItem } from './components/ContextMenu';
 import {
     ConfirmDialog,
     LoadFile,
@@ -12,7 +17,13 @@ import {
 } from '../wailsjs/go/main/Bindings';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import type { main } from '../wailsjs/go/models';
-import { initialState, isDirty, reducer, type PendingEdit } from './state';
+import {
+    initialState,
+    isDirty,
+    reducer,
+    type PendingEdit,
+    type Rect,
+} from './state';
 import {
     bounds,
     singleCell,
@@ -27,11 +38,15 @@ function App() {
     const [selection, setSelection] = useState<Selection | null>(null);
     const [editing, setEditing] = useState<EditingCell | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [contextMenu, setContextMenu] = useState<{
+        items: MenuItem[];
+        x: number;
+        y: number;
+    } | null>(null);
 
     const { file, rows } = state;
     const dirty = isDirty(state);
 
-    // Computed dynamically so paste-driven column growth flows through.
     const maxColumns = useMemo(() => {
         let m = file?.hasHeader && file.header ? file.header.length : 0;
         for (const row of rows) if (row.length > m) m = row.length;
@@ -174,19 +189,17 @@ function App() {
                 ],
             });
             setEditing(null);
-
             if (direction !== 'none') {
-                const maxCols = file?.maxColumns ?? 0;
                 let r = editing.rowIndex;
                 let c = editing.columnIndex;
                 if (direction === 'up') r = Math.max(0, r - 1);
                 if (direction === 'down') r = Math.min(rows.length - 1, r + 1);
                 if (direction === 'left') c = Math.max(0, c - 1);
-                if (direction === 'right') c = Math.min(maxCols - 1, c + 1);
+                if (direction === 'right') c = Math.min(maxColumns - 1, c + 1);
                 setSelection(singleCell({ rowIndex: r, columnIndex: c }));
             }
         },
-        [editing, file?.maxColumns, rows.length],
+        [editing, maxColumns, rows.length],
     );
 
     const handleCancelEdit = useCallback(() => {
@@ -213,6 +226,17 @@ function App() {
             setError(`Clipboard copy failed: ${e}`);
         }
     }, [selection, rows]);
+
+    const handleClear = useCallback(() => {
+        if (!selection) return;
+        const b = bounds(selection);
+        dispatch({ type: 'CLEAR_CELLS', rect: b as Rect });
+    }, [selection]);
+
+    const handleCut = useCallback(async () => {
+        await handleCopy();
+        handleClear();
+    }, [handleCopy, handleClear]);
 
     const handlePaste = useCallback(async () => {
         if (!selection || !file) return;
@@ -252,7 +276,6 @@ function App() {
                 `paste will extend the table to ${newRows} rows × ${newCols} columns`,
             );
         }
-
         if (reasons.length > 0) {
             try {
                 const ok = await ConfirmDialog(
@@ -280,14 +303,256 @@ function App() {
         if (edits.length === 0) return;
         dispatch({ type: 'APPLY_EDITS', edits });
 
-        // Expand the selection to cover what was pasted.
         const newAnchor: CellPosition = { rowIndex: b.r0, columnIndex: b.c0 };
         const newFocus: CellPosition = {
             rowIndex: b.r0 + clipRows - 1,
             columnIndex: b.c0 + clipCols - 1,
         };
         setSelection({ anchor: newAnchor, focus: newFocus });
-    }, [selection, file, rows.length, maxColumns]);
+    }, [selection, file, rows, rows.length, maxColumns]);
+
+    // --- Structural row/column operations ---
+
+    // Range of currently-selected rows when the selection spans full rows
+    // (or when the target is from a row-header right-click).
+    const selectedRowRange = useCallback(
+        (fallback: number): { start: number; count: number } => {
+            if (
+                selection &&
+                selection.anchor.columnIndex === 0 &&
+                selection.focus.columnIndex === Math.max(0, maxColumns - 1)
+            ) {
+                const b = bounds(selection);
+                return { start: b.r0, count: b.r1 - b.r0 + 1 };
+            }
+            return { start: fallback, count: 1 };
+        },
+        [selection, maxColumns],
+    );
+
+    const selectedColRange = useCallback(
+        (fallback: number): { start: number; count: number } => {
+            if (
+                selection &&
+                selection.anchor.rowIndex === 0 &&
+                selection.focus.rowIndex === Math.max(0, rows.length - 1)
+            ) {
+                const b = bounds(selection);
+                return { start: b.c0, count: b.c1 - b.c0 + 1 };
+            }
+            return { start: fallback, count: 1 };
+        },
+        [selection, rows.length],
+    );
+
+    const insertRowsAbove = useCallback(
+        (atIndex: number, count: number) => {
+            dispatch({ type: 'INSERT_ROWS', atIndex, count });
+            setSelection({
+                anchor: { rowIndex: atIndex, columnIndex: 0 },
+                focus: {
+                    rowIndex: atIndex + count - 1,
+                    columnIndex: Math.max(0, maxColumns - 1),
+                },
+            });
+        },
+        [maxColumns],
+    );
+
+    const insertRowsBelow = useCallback(
+        (atIndex: number, count: number) => {
+            const at = atIndex + 1;
+            dispatch({ type: 'INSERT_ROWS', atIndex: at, count });
+            setSelection({
+                anchor: { rowIndex: at, columnIndex: 0 },
+                focus: {
+                    rowIndex: at + count - 1,
+                    columnIndex: Math.max(0, maxColumns - 1),
+                },
+            });
+        },
+        [maxColumns],
+    );
+
+    const deleteRows = useCallback(
+        (startIndex: number, count: number) => {
+            dispatch({ type: 'DELETE_ROWS', startIndex, count });
+            const remaining = rows.length - count;
+            if (remaining <= 0) {
+                setSelection(null);
+            } else {
+                const r = Math.min(startIndex, remaining - 1);
+                setSelection({
+                    anchor: { rowIndex: r, columnIndex: 0 },
+                    focus: { rowIndex: r, columnIndex: Math.max(0, maxColumns - 1) },
+                });
+            }
+        },
+        [rows.length, maxColumns],
+    );
+
+    const duplicateRows = useCallback(
+        (startIndex: number, count: number) => {
+            dispatch({ type: 'DUPLICATE_ROWS', startIndex, count });
+            const newStart = startIndex + count;
+            setSelection({
+                anchor: { rowIndex: newStart, columnIndex: 0 },
+                focus: {
+                    rowIndex: newStart + count - 1,
+                    columnIndex: Math.max(0, maxColumns - 1),
+                },
+            });
+        },
+        [maxColumns],
+    );
+
+    const insertColsLeft = useCallback(
+        (atIndex: number, count: number) => {
+            dispatch({ type: 'INSERT_COLS', atIndex, count });
+            setSelection({
+                anchor: { rowIndex: 0, columnIndex: atIndex },
+                focus: {
+                    rowIndex: Math.max(0, rows.length - 1),
+                    columnIndex: atIndex + count - 1,
+                },
+            });
+        },
+        [rows.length],
+    );
+
+    const insertColsRight = useCallback(
+        (atIndex: number, count: number) => {
+            const at = atIndex + 1;
+            dispatch({ type: 'INSERT_COLS', atIndex: at, count });
+            setSelection({
+                anchor: { rowIndex: 0, columnIndex: at },
+                focus: {
+                    rowIndex: Math.max(0, rows.length - 1),
+                    columnIndex: at + count - 1,
+                },
+            });
+        },
+        [rows.length],
+    );
+
+    const deleteCols = useCallback(
+        (startIndex: number, count: number) => {
+            dispatch({ type: 'DELETE_COLS', startIndex, count });
+            const remaining = maxColumns - count;
+            if (remaining <= 0) {
+                setSelection(null);
+            } else {
+                const c = Math.min(startIndex, remaining - 1);
+                setSelection({
+                    anchor: { rowIndex: 0, columnIndex: c },
+                    focus: { rowIndex: Math.max(0, rows.length - 1), columnIndex: c },
+                });
+            }
+        },
+        [rows.length, maxColumns],
+    );
+
+    const duplicateCols = useCallback(
+        (startIndex: number, count: number) => {
+            dispatch({ type: 'DUPLICATE_COLS', startIndex, count });
+            const newStart = startIndex + count;
+            setSelection({
+                anchor: { rowIndex: 0, columnIndex: newStart },
+                focus: {
+                    rowIndex: Math.max(0, rows.length - 1),
+                    columnIndex: newStart + count - 1,
+                },
+            });
+        },
+        [rows.length],
+    );
+
+    const handleContextMenu = useCallback(
+        (e: React.MouseEvent, target: ContextMenuTarget) => {
+            e.preventDefault();
+            let items: MenuItem[];
+            switch (target.kind) {
+                case 'row': {
+                    const range = selectedRowRange(target.rowIndex);
+                    const label = range.count === 1 ? 'row' : `${range.count} rows`;
+                    items = [
+                        {
+                            label: `Insert ${label} above`,
+                            onClick: () => insertRowsAbove(range.start, range.count),
+                        },
+                        {
+                            label: `Insert ${label} below`,
+                            onClick: () =>
+                                insertRowsBelow(range.start + range.count - 1, range.count),
+                        },
+                        {
+                            label: `Duplicate ${label}`,
+                            onClick: () => duplicateRows(range.start, range.count),
+                        },
+                        {
+                            label: `Delete ${label}`,
+                            onClick: () => deleteRows(range.start, range.count),
+                        },
+                    ];
+                    break;
+                }
+                case 'column': {
+                    const range = selectedColRange(target.columnIndex);
+                    const label = range.count === 1 ? 'column' : `${range.count} columns`;
+                    items = [
+                        {
+                            label: `Insert ${label} left`,
+                            onClick: () => insertColsLeft(range.start, range.count),
+                        },
+                        {
+                            label: `Insert ${label} right`,
+                            onClick: () =>
+                                insertColsRight(range.start + range.count - 1, range.count),
+                        },
+                        {
+                            label: `Duplicate ${label}`,
+                            onClick: () => duplicateCols(range.start, range.count),
+                        },
+                        {
+                            label: `Delete ${label}`,
+                            onClick: () => deleteCols(range.start, range.count),
+                        },
+                    ];
+                    break;
+                }
+                case 'cell':
+                default:
+                    items = [
+                        { label: 'Cut', onClick: () => handleCut() },
+                        { label: 'Copy', onClick: () => handleCopy() },
+                        { label: 'Paste', onClick: () => handlePaste() },
+                        {
+                            label: 'Clear contents',
+                            onClick: () => handleClear(),
+                            separatorBefore: true,
+                        },
+                    ];
+                    break;
+            }
+            setContextMenu({ items, x: e.clientX, y: e.clientY });
+        },
+        [
+            selectedRowRange,
+            selectedColRange,
+            insertRowsAbove,
+            insertRowsBelow,
+            duplicateRows,
+            deleteRows,
+            insertColsLeft,
+            insertColsRight,
+            duplicateCols,
+            deleteCols,
+            handleCut,
+            handleCopy,
+            handlePaste,
+            handleClear,
+        ],
+    );
 
     return (
         <div id="App">
@@ -310,7 +575,10 @@ function App() {
                     onUndo={handleUndo}
                     onRedo={handleRedo}
                     onCopy={handleCopy}
+                    onCut={handleCut}
                     onPaste={handlePaste}
+                    onClear={handleClear}
+                    onContextMenu={handleContextMenu}
                 />
             ) : (
                 <main className="placeholder">
@@ -331,6 +599,14 @@ function App() {
                 onHasHeaderToggle={handleHasHeaderToggle}
                 onLineEndingChange={handleLineEndingChange}
             />
+            {contextMenu && (
+                <ContextMenu
+                    items={contextMenu.items}
+                    x={contextMenu.x}
+                    y={contextMenu.y}
+                    onClose={() => setContextMenu(null)}
+                />
+            )}
         </div>
     );
 }
