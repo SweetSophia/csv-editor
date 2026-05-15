@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
+	"strconv"
 	"strings"
 
 	"github.com/nlink-jp/csv-editor/internal/config"
@@ -32,11 +35,14 @@ func (b *Bindings) startup(ctx context.Context) {
 		b.handleFileDrop(ctx, x, y, paths)
 	})
 
-	// Restore the saved window position. Size is already applied via App
-	// options before the window exists; position has no equivalent option
-	// so it is set after creation. A 0,0 fallback is left alone — the OS
-	// will pick a sensible spot on the active screen.
-	if cfg, err := config.Load(); err == nil && cfg.Window != nil {
+	// Position handling:
+	//   - Child instance (spawned via File ▸ New Window): use the cascade
+	//     offset the parent passed on the command line.
+	//   - Primary instance: restore from config (saved 0,0 means "let the
+	//     OS pick the spot" so we skip the call).
+	if spawnedPosition != nil {
+		wailsRuntime.WindowSetPosition(ctx, spawnedPosition.X, spawnedPosition.Y)
+	} else if cfg, err := config.Load(); err == nil && cfg.Window != nil {
 		if cfg.Window.X != 0 || cfg.Window.Y != 0 {
 			wailsRuntime.WindowSetPosition(ctx, cfg.Window.X, cfg.Window.Y)
 		}
@@ -49,7 +55,15 @@ func (b *Bindings) shutdown(_ context.Context) {
 // saveWindowState persists the current window frame so the next launch
 // restores it. Wired as Wails' OnBeforeClose callback. Returns false so
 // the close proceeds normally.
+//
+// Child instances (spawned via File ▸ New Window) skip the save — their
+// position was already offset from the parent, and persisting that offset
+// would shift the user's preferred frame each time a new window is
+// opened.
 func (b *Bindings) saveWindowState(ctx context.Context) (prevent bool) {
+	if childInstance {
+		return false
+	}
 	w, h := wailsRuntime.WindowGetSize(ctx)
 	x, y := wailsRuntime.WindowGetPosition(ctx)
 	cfg, err := config.Load()
@@ -338,6 +352,48 @@ type applyMenu interface {
 // for "menu:new" so it can confirm discarding unsaved changes first.
 func (b *Bindings) RequestNewFile() {
 	wailsRuntime.EventsEmit(b.ctx, "menu:new")
+}
+
+// RequestNewWindow spawns a fresh csv-editor process. Used from File ▸
+// New Window so the user can keep several files side by side — Wails v2
+// is single-window per process, so "another window" really means
+// "another instance". On macOS we go through `open -n -a` so LaunchServices
+// treats it as a distinct app instance; on Windows/Linux re-executing the
+// binary works directly.
+//
+// The child window is positioned at the parent's current position + a
+// fixed cascade offset (macOS-style) so the two windows don't perfectly
+// overlap. The position is passed through "--window-position X Y" args.
+func (b *Bindings) RequestNewWindow() {
+	exePath, err := os.Executable()
+	if err != nil {
+		wailsRuntime.EventsEmit(b.ctx, "file:error", "new window: "+err.Error())
+		return
+	}
+
+	const cascadeOffset = 30
+	curX, curY := wailsRuntime.WindowGetPosition(b.ctx)
+	newX := strconv.Itoa(curX + cascadeOffset)
+	newY := strconv.Itoa(curY + cascadeOffset)
+
+	var cmd *exec.Cmd
+	if goruntime.GOOS == "darwin" {
+		const macOSAppMarker = ".app/Contents/MacOS/"
+		if idx := strings.Index(exePath, macOSAppMarker); idx >= 0 {
+			appPath := exePath[:idx+len(".app")]
+			// open(1): --args separates flags for the launched app from
+			// flags for `open` itself.
+			cmd = exec.Command("open", "-n", "-a", appPath,
+				"--args", "--window-position", newX, newY)
+		} else {
+			cmd = exec.Command(exePath, "--window-position", newX, newY)
+		}
+	} else {
+		cmd = exec.Command(exePath, "--window-position", newX, newY)
+	}
+	if err := cmd.Start(); err != nil {
+		wailsRuntime.EventsEmit(b.ctx, "file:error", "new window: "+err.Error())
+	}
 }
 
 // NewFile returns a blank in-memory file scaffold (Untitled, 5×3) and

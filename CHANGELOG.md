@@ -7,6 +7,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-05-14
+
+### Added
+- Cells with embedded newlines (quoted multi-line CSV fields) are now
+  visible and editable. The single-line cell view shows newlines as a
+  muted `↵` glyph; the editor uses a `<textarea>` so Alt+Enter inserts a
+  literal newline while Enter still commits (Shift+Enter / Tab / Esc
+  unchanged). RFC 4180 quoting on save was already correct — only the
+  UI was missing.
+- **File ▸ New Window** (Cmd+Shift+N on macOS, Ctrl+Shift+N elsewhere)
+  spawns a fresh csv-editor process so multiple files can be edited
+  side by side. Wails v2 is single-window per process; on macOS the
+  spawn uses `open -n -a` to register a distinct LaunchServices
+  instance. The child window is offset +30,+30 from the parent
+  (macOS-style cascade) via a `--window-position` argument so the new
+  window doesn't perfectly overlap. Child instances skip the
+  OnBeforeClose state save to keep the user's primary frame intact.
+- **File ▸ Close Window** (Cmd+W / Ctrl+W) wired to the standard
+  shortcut. Since Wails v2 runs one window per process, this also exits
+  the app — OnBeforeClose still fires so window state is persisted.
+
+### Fixed
+- `File ▸ New` no longer inherits the previous file's per-column widths.
+  `handleNew` now resets the columnWidths map alongside the existing
+  selection / editing / error resets.
+
 ## [0.1.1] - 2026-05-14
 
 ### Added
@@ -96,6 +122,7 @@ for daily use as a CSV/TSV editor on macOS (Apple Silicon) and Windows 11.
 - Apple Silicon prioritized; Intel macOS may work but is not actively
   validated.
 
-[Unreleased]: https://github.com/nlink-jp/csv-editor/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/nlink-jp/csv-editor/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/nlink-jp/csv-editor/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/nlink-jp/csv-editor/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nlink-jp/csv-editor/releases/tag/v0.1.0

@@ -248,6 +248,7 @@ function App() {
             setEditing(null);
             setEditingHeader(null);
             setError(null);
+            setColumnWidths(new Map());
         } catch (e) {
             setError(String(e));
         }

@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"embed"
+	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"strconv"
 
 	"github.com/nlink-jp/csv-editor/internal/config"
 
@@ -15,6 +17,33 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// spawnedPosition is non-nil only when this process was launched by another
+// csv-editor via File ▸ New Window. The spawner passes its current
+// position + cascade offset on the command line so the child window opens
+// next to the parent (not exactly under it).
+var spawnedPosition *struct{ X, Y int }
+
+// childInstance is true when this process is a New Window spawn. Used to
+// skip saving the window state to config — otherwise repeated New Window
+// invocations would cascade and pollute the user's preferred position.
+var childInstance bool
+
+// parseSpawnArgs scans os.Args for "--window-position X Y". Called from
+// main() before wails.Run so startup hooks can see the result.
+func parseSpawnArgs() {
+	for i, a := range os.Args {
+		if a == "--window-position" && i+2 < len(os.Args) {
+			x, errx := strconv.Atoi(os.Args[i+1])
+			y, erry := strconv.Atoi(os.Args[i+2])
+			if errx == nil && erry == nil {
+				spawnedPosition = &struct{ X, Y int }{X: x, Y: y}
+				childInstance = true
+			}
+			return
+		}
+	}
+}
 
 var version = "dev"
 
@@ -37,6 +66,8 @@ const (
 )
 
 func main() {
+	parseSpawnArgs()
+
 	bindings := NewBindings()
 	buildMenuFunc = func(b *Bindings) any {
 		return menuWrapper{m: buildMenu(b)}
@@ -44,6 +75,8 @@ func main() {
 
 	// Restore the last-known window size if it looks sensible. Position is
 	// applied separately in the startup hook, after the window exists.
+	// Child instances inherit size from the saved config too — only the
+	// position is offset so the new window doesn't perfectly overlap.
 	width := defaultWindowWidth
 	height := defaultWindowHeight
 	if cfg, err := config.Load(); err == nil && cfg.Window != nil {
@@ -95,6 +128,9 @@ func buildMenu(b *Bindings) *menu.Menu {
 	fileMenu.AddText("New", keys.CmdOrCtrl("n"), func(_ *menu.CallbackData) {
 		b.RequestNewFile()
 	})
+	fileMenu.AddText("New Window", keys.Combo("n", keys.CmdOrCtrlKey, keys.ShiftKey), func(_ *menu.CallbackData) {
+		b.RequestNewWindow()
+	})
 	fileMenu.AddText("Open...", keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
 		b.RequestOpenFile()
 	})
@@ -125,8 +161,15 @@ func buildMenu(b *Bindings) *menu.Menu {
 		b.RequestSaveAs()
 	})
 
+	// Close Window (Cmd+W on macOS, Ctrl+W on Win/Linux). Wails v2 is
+	// single-window per process, so closing the window quits the app —
+	// OnBeforeClose still fires, which persists window state before exit.
+	fileMenu.AddSeparator()
+	fileMenu.AddText("Close Window", keys.CmdOrCtrl("w"), func(_ *menu.CallbackData) {
+		wailsRuntime.Quit(b.ctx)
+	})
+
 	if goruntime.GOOS != "darwin" {
-		fileMenu.AddSeparator()
 		fileMenu.AddText("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
 			wailsRuntime.Quit(b.ctx)
 		})

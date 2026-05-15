@@ -159,6 +159,23 @@ html, body {
     text-align: right;
 }
 
+/* Inline marker for embedded newlines inside a single-line cell view. */
+.vt-cell-newline {
+    color: var(--fg-muted);
+    margin: 0 0.25em;
+    user-select: none;
+}
+
+/* When the cell editor is a <textarea>, suppress its native resize handle
+   and let the inherited cell font flow naturally. */
+textarea.vt-cell-editor {
+    resize: none;
+    overflow: auto;
+    white-space: pre;
+    -webkit-user-select: auto;
+    user-select: auto;
+}
+
 .vt-cell-selected {
     background: var(--accent-bg);
 }

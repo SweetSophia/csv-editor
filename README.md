@@ -17,10 +17,13 @@ CP932), row/column copy operations, and TSV clipboard expansion correctly.
   (LF / CRLF) selection.
 - **Drag & drop** any CSV/TSV file onto the window to open it.
 - **Open Recent** submenu (last 10 files, persisted to your OS config dir).
+- **New Window** (Cmd+Shift+N) opens an additional csv-editor instance so
+  multiple files can be edited side by side.
 
 ### Editing
 - **Cell editing** with **IME-safe Enter** — Japanese input no longer
-  commits cells by mistake on the confirmation key.
+  commits cells by mistake on the confirmation key. **Alt+Enter** inserts
+  a newline inside the cell (RFC 4180 quoted multi-line fields).
 - **Range selection**: mouse drag, Shift+click, Shift+arrow, Shift+Cmd+arrow
   to extend to the edge, Cmd+A to select all.
 - **TSV clipboard** that actually works:
@@ -60,12 +63,14 @@ CP932), row/column copy operations, and TSV clipboard expansion correctly.
 | Action | macOS | Windows |
 |---|---|---|
 | New / Open / Save / Save As | ⌘N / ⌘O / ⌘S / ⇧⌘S | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |
+| New Window / Close Window | ⇧⌘N / ⌘W | Ctrl+Shift+N / Ctrl+W |
 | Find / Find & Replace | ⌘F / ⌘H | Ctrl+F / Ctrl+H |
 | Next / Prev match | ⌘G / ⇧⌘G | Ctrl+G / Ctrl+Shift+G (also F3 / Shift+F3) |
 | Undo / Redo | ⌘Z / ⇧⌘Z | Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) |
 | Cut / Copy / Paste | ⌘X / ⌘C / ⌘V | Ctrl+X / Ctrl+C / Ctrl+V |
 | Select all | ⌘A | Ctrl+A |
 | Edit selected cell | Enter or F2 | Enter or F2 |
+| Insert newline in edit | Alt+Enter | Alt+Enter |
 | Move selection | ↑↓←→ / Home / End / PgUp / PgDn | same |
 | Extend selection | Shift+arrow / Shift+Cmd+arrow | Shift+arrow / Shift+Ctrl+arrow |
 | Move selected rows/columns | Alt+↑↓←→ | Alt+arrow |

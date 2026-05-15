@@ -23,6 +23,30 @@ interface CellMatchInfo {
     currentLocal: number; // index within this cell's matches that is "current", or -1
 }
 
+// renderTextWithNewlines turns "a\nb" into ["a", <↵ glyph>, "b"] so that
+// quoted CSV fields with embedded newlines show their breaks in the
+// single-line cell layout. Returns the raw string when there are no
+// newlines so React skips array reconciliation in the common case.
+function renderTextWithNewlines(
+    text: string,
+    keyPrefix: string,
+): React.ReactNode {
+    if (!text.includes('\n')) return text;
+    const parts: React.ReactNode[] = [];
+    const segments = text.split('\n');
+    for (let i = 0; i < segments.length; i++) {
+        if (segments[i]) parts.push(segments[i]);
+        if (i < segments.length - 1) {
+            parts.push(
+                <span key={`${keyPrefix}n${i}`} className="vt-cell-newline">
+                    ↵
+                </span>,
+            );
+        }
+    }
+    return parts;
+}
+
 function renderCellWithMatches(text: string, info: CellMatchInfo): React.ReactNode {
     if (!text) return text;
     const parts: React.ReactNode[] = [];
@@ -30,19 +54,31 @@ function renderCellWithMatches(text: string, info: CellMatchInfo): React.ReactNo
     for (let i = 0; i < info.starts.length; i++) {
         const start = info.starts[i];
         const end = info.ends[i];
-        if (start > cursor) parts.push(text.substring(cursor, start));
+        if (start > cursor) {
+            parts.push(
+                <span key={`pre${i}`}>
+                    {renderTextWithNewlines(text.substring(cursor, start), `pre${i}`)}
+                </span>,
+            );
+        }
         const isCurrent = i === info.currentLocal;
         parts.push(
             <span
                 key={i}
                 className={'vt-match' + (isCurrent ? ' vt-match-current' : '')}
             >
-                {text.substring(start, end)}
+                {renderTextWithNewlines(text.substring(start, end), `m${i}`)}
             </span>,
         );
         cursor = end;
     }
-    if (cursor < text.length) parts.push(text.substring(cursor));
+    if (cursor < text.length) {
+        parts.push(
+            <span key="tail">
+                {renderTextWithNewlines(text.substring(cursor), 'tail')}
+            </span>,
+        );
+    }
     return parts;
 }
 
@@ -731,6 +767,8 @@ export function VirtualTable({
                                             />
                                         ) : cellMatches ? (
                                             renderCellWithMatches(cellText, cellMatches)
+                                        ) : cellText.includes('\n') ? (
+                                            renderTextWithNewlines(cellText, 'cell')
                                         ) : (
                                             flexRender(cell.column.columnDef.cell, cell.getContext())
                                         )}

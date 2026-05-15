@@ -18,9 +18,12 @@ TSV ペーストの複数セル展開を正しく処理する。
   改行コード (LF / CRLF) を選択可能。
 - **ドラッグ & ドロップ**でウィンドウに CSV/TSV を投げ込んで開ける。
 - **最近使ったファイル** サブメニュー (最大 10 件、OS 標準設定ディレクトリに永続化)。
+- **New Window** (⇧⌘N) で別の csv-editor インスタンスを起動し、複数ファイルを
+  並行編集。
 
 ### 編集
 - **IME 安全な Enter** — 日本語入力の確定キーで誤ってセルが確定しない。
+  **Alt+Enter** でセル内改行 (RFC 4180 クォート内改行を編集可能)。
 - **範囲選択**: マウスドラッグ、Shift+クリック、Shift+矢印、Shift+Cmd+矢印
   (端までジャンプ拡張)、Cmd+A で全選択。
 - **TSV クリップボード**を正しく扱う:
@@ -55,12 +58,14 @@ TSV ペーストの複数セル展開を正しく処理する。
 | 操作 | macOS | Windows |
 |---|---|---|
 | 新規 / 開く / 保存 / 名前を付けて保存 | ⌘N / ⌘O / ⌘S / ⇧⌘S | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |
+| 新規ウィンドウ / ウィンドウを閉じる | ⇧⌘N / ⌘W | Ctrl+Shift+N / Ctrl+W |
 | 検索 / 検索と置換 | ⌘F / ⌘H | Ctrl+F / Ctrl+H |
 | 次 / 前のマッチ | ⌘G / ⇧⌘G | Ctrl+G / Ctrl+Shift+G (F3 / Shift+F3 も可) |
 | Undo / Redo | ⌘Z / ⇧⌘Z | Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y も可) |
 | カット / コピー / ペースト | ⌘X / ⌘C / ⌘V | Ctrl+X / Ctrl+C / Ctrl+V |
 | 全選択 | ⌘A | Ctrl+A |
 | 選択セル編集 | Enter または F2 | Enter または F2 |
+| セル内改行 (編集中) | Alt+Enter | Alt+Enter |
 | 選択移動 | ↑↓←→ / Home / End / PgUp / PgDn | 同左 |
 | 選択範囲拡張 | Shift+矢印 / Shift+Cmd+矢印 | Shift+矢印 / Shift+Ctrl+矢印 |
 | 選択行/列の移動 | Alt+↑↓←→ | Alt+矢印 |
