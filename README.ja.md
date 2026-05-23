@@ -93,10 +93,15 @@ csv-editor は **表計算ソフトではない**。以下は実装しない:
 
 ## インストール
 
-GitHub Releases でバイナリを配布予定。当面**未署名**:
+GitHub Releases でバイナリを配布。
 
-- **macOS Gatekeeper**: `csv-editor.app` を右クリック → 開く → 確認ダイアログで実行。
-- **Windows SmartScreen**: 「詳細情報」→「実行」をクリック。
+- **macOS**: `.app` は **Apple Developer ID 署名済 + Apple notarize 済**
+  (Hardened Runtime + ticket staple)。zip を展開して `csv-editor.app`
+  を任意の場所に配置すれば、Gatekeeper ダイアログなしで起動、
+  オフラインでも動作します。
+- **Windows**: `.exe` は現状**未署名**。初回起動時に SmartScreen が
+  「PC を保護しました」と表示するので「詳細情報」→「実行」を
+  クリック。Authenticode 署名は今後の対応予定。
 
 ## ソースからのビルド
 

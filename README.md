@@ -102,12 +102,15 @@ Calc.
 
 ## Installation
 
-Binaries will be distributed via GitHub Releases, **unsigned** for now to
-keep the project free of signing-certificate cost.
+Binaries are distributed via GitHub Releases.
 
-- **macOS Gatekeeper**: right-click `csv-editor.app` → Open → confirm in
-  the dialog.
-- **Windows SmartScreen**: click "More info" → "Run anyway".
+- **macOS**: the `.app` is **Developer ID signed and Apple-notarized**
+  (Hardened Runtime + stapled ticket). Unzip and move
+  `csv-editor.app` anywhere — it launches without Gatekeeper prompts
+  and works offline.
+- **Windows**: the `.exe` is currently **unsigned**. SmartScreen shows
+  "Windows protected your PC" on first run — click "More info" → "Run
+  anyway". Authenticode signing for Windows is not yet in place.
 
 ## Building from source
 

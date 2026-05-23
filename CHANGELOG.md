@@ -7,6 +7,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-05-23
+
+### Changed
+
+- **macOS builds are Developer ID signed and Apple-notarized.**
+  Replaces Wails's default ad-hoc signature with a full Apple
+  Developer ID Application signature on the `.app` bundle, with
+  Hardened Runtime + Apple secure timestamp + minimal WebKit JIT
+  entitlements. `make package` submits the bundle to Apple's
+  notary service and staples the ticket onto the `.app`, so
+  offline first-launch works without a Gatekeeper verification
+  dialog. End users on macOS no longer need the right-click → Open
+  workaround documented in v0.1.2's README. Local users who install
+  `csv-editor.app` under Dropbox / iCloud / OneDrive-synced paths
+  are no longer killed by macOS's ad-hoc + provenance distrust
+  policy. Pipeline adopts the org-wide convention in
+  `nlink-jp/.github` CONVENTIONS.md §Code Signing → Wails / GUI
+  apps. Windows `.exe` remains unsigned — Authenticode signing TBD.
+- **macOS distribution format**: `make package` produces
+  `csv-editor-vX.Y.Z-darwin.zip` (signed + notarized + stapled
+  `.app` packaged via `ditto`); previous releases shipped an
+  un-signed `.app` directly inside `dist/`.
+
+No behaviour change to the editor itself — feature-wise this is
+identical to v0.1.2.
+
 ## [0.1.2] - 2026-05-14
 
 ### Added

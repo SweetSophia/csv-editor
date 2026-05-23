@@ -50,8 +50,11 @@ RFP. Highlights:
   selection triggers a warning dialog.
 - **Hundreds of thousands of rows** — virtual scrolling via TanStack Table.
 - **IME-safe editing** — wait for `compositionend` before committing.
-- **Distribution** — single executable, unsigned for now (Gatekeeper /
-  SmartScreen workarounds documented in README).
+- **Distribution** — single executable. macOS `.app` is Developer ID
+  signed + Apple-notarized + stapled (`make package` via
+  `scripts/codesign-darwin-app.sh` + `scripts/notarize-darwin-app.sh`,
+  per nlink-jp/.github CONVENTIONS.md §Code Signing → Wails / GUI
+  apps). Windows `.exe` remains unsigned (Authenticode signing TBD).
 - **Windows 11 only** — WebView2 is OS-bundled; Win10 excluded to keep
   maintenance simple.
 
