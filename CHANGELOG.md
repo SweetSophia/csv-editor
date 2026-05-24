@@ -7,6 +7,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Linux/Ubuntu build and packaging support.** `make build` now copies the
+  Linux `build/bin/csv-editor` binary to `dist/csv-editor` when present, and
+  `make package` produces `csv-editor-$(VERSION)-linux-amd64.tar.gz` alongside
+  the existing macOS and Windows artifacts. Linux builds default to Wails'
+  `webkit2_41` tag for Ubuntu 24.04/WebKitGTK 4.1.
+- Added source-controlled Linux desktop metadata at
+  `app/build/linux/csv-editor.desktop` for downstream installers or manual
+  desktop integration. No `.deb`, AppImage, Snap, or Flatpak package is
+  produced yet.
+
 ## [0.1.3] - 2026-05-23
 
 ### Changed

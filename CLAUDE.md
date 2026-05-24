@@ -2,7 +2,7 @@
 
 ## Overview
 
-CSV/TSV viewer & editor GUI for Windows / macOS.
+CSV/TSV viewer & editor GUI for macOS / Windows / Linux.
 Wails v2 (Go + React/TypeScript) desktop application.
 
 Designed to replace TableTool with a maintained, ARM64-native, multi-encoding
@@ -38,7 +38,7 @@ RFP. Highlights:
 - **OS theme follows automatically** — light / dark via CSS custom properties
   and `prefers-color-scheme`. Don't hardcode colors; use the `--bg`, `--fg`,
   `--fg-muted`, `--border` tokens defined in `App.css`.
-- **Native OS title bar** — we use the default macOS / Windows title bar
+- **Native OS title bar** — we use the default OS title bar
   (no `FullSizeContent`, no transparent titlebar). The window title reflects
   the open file, e.g. `filename.csv — CSV Editor`, updated via
   `runtime.WindowSetTitle`.
@@ -50,13 +50,17 @@ RFP. Highlights:
   selection triggers a warning dialog.
 - **Hundreds of thousands of rows** — virtual scrolling via TanStack Table.
 - **IME-safe editing** — wait for `compositionend` before committing.
-- **Distribution** — single executable. macOS `.app` is Developer ID
+- **Distribution** — single executable or app bundle. macOS `.app` is Developer ID
   signed + Apple-notarized + stapled (`make package` via
   `scripts/codesign-darwin-app.sh` + `scripts/notarize-darwin-app.sh`,
   per nlink-jp/.github CONVENTIONS.md §Code Signing → Wails / GUI
-  apps). Windows `.exe` remains unsigned (Authenticode signing TBD).
+  apps). Windows `.exe` remains unsigned (Authenticode signing TBD). Linux
+  packages as a `.tar.gz` containing the `csv-editor` binary; desktop metadata
+  lives under `app/build/linux/`.
 - **Windows 11 only** — WebView2 is OS-bundled; Win10 excluded to keep
   maintenance simple.
+- **Ubuntu 24.04 target** — Linux builds use Wails with WebKitGTK 4.1 via
+  `-tags webkit2_41`.
 
 ## Phase Plan
 

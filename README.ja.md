@@ -1,6 +1,6 @@
 # csv-editor
 
-Windows / macOS 両対応の CSV/TSV ビューワ＆エディタ GUI。
+macOS / Windows / Linux (Ubuntu) 対応の CSV/TSV ビューワ＆エディタ GUI。
 
 [Wails](https://wails.io) (Go + React/TypeScript) で実装。メンテが止まり
 ARM64 専用 macOS で動作不能になる
@@ -55,7 +55,7 @@ TSV ペーストの複数セル展開を正しく処理する。
 
 ## キーボードショートカット
 
-| 操作 | macOS | Windows |
+| 操作 | macOS | Windows/Linux |
 |---|---|---|
 | 新規 / 開く / 保存 / 名前を付けて保存 | ⌘N / ⌘O / ⌘S / ⇧⌘S | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |
 | 新規ウィンドウ / ウィンドウを閉じる | ⇧⌘N / ⌘W | Ctrl+Shift+N / Ctrl+W |
@@ -89,7 +89,9 @@ csv-editor は **表計算ソフトではない**。以下は実装しない:
 
 - **macOS 12 以降** (Apple Silicon 推奨。Intel は動くが優先対象外)
 - **Windows 11** (Edge WebView2 同梱。Windows 10 は対象外)
-- **ソースビルド**: Go 1.23+、Node.js 20+、[Wails v2](https://wails.io)
+- **Ubuntu 24.04 LTS** / Linux (Wails 用の GTK 3 と WebKitGTK 4.1 開発
+  ライブラリが必要)
+- **ソースビルド**: Go 1.25+、Node.js 20+、[Wails v2.12](https://wails.io)
 
 ## インストール
 
@@ -102,15 +104,24 @@ GitHub Releases でバイナリを配布。
 - **Windows**: `.exe` は現状**未署名**。初回起動時に SmartScreen が
   「PC を保護しました」と表示するので「詳細情報」→「実行」を
   クリック。Authenticode 署名は今後の対応予定。
+- **Linux/Ubuntu**: `csv-editor` 実行ファイルを含む `.tar.gz` を配布。
+  デスクトップ統合用 metadata は `app/build/linux/` に保持していますが、
+  現時点では `.deb` / AppImage / Snap / Flatpak は生成しません。
 
 ## ソースからのビルド
 
 ```bash
 cd app
-make build     # 本番ビルド → dist/csv-editor.app (macOS) または .exe (Windows)
+make build     # 本番ビルド → dist/csv-editor.app / .exe / Linux 実行ファイル
+make package   # 配布物 → .zip (macOS/Windows) または .tar.gz (Linux)
 make dev       # ライブリロード開発
 make test      # 単体テスト
 ```
+
+Ubuntu 24.04 では、Wails の Linux prerequisites として GTK 3 と WebKitGTK
+4.1 の開発パッケージをインストールしてください。Makefile は Linux ビルドで
+`-tags webkit2_41` を既定指定します。Wails を直接実行する場合は
+`wails build -tags webkit2_41` を使用してください。
 
 ## ドキュメント
 

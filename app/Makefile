@@ -1,6 +1,16 @@
 APP     := csv-editor
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -X 'main.version=$(VERSION)'
+UNAME_S := $(shell uname -s)
+
+ifeq ($(UNAME_S),Linux)
+WAILS_TAGS ?= webkit2_41
+endif
+
+WAILS_BUILD_FLAGS := -ldflags "$(LDFLAGS)"
+ifneq ($(strip $(WAILS_TAGS)),)
+WAILS_BUILD_FLAGS += -tags "$(WAILS_TAGS)"
+endif
 
 # macOS Developer ID signing / notarization (see nlink-jp/.github
 # CONVENTIONS.md §Code Signing → Wails / GUI apps). Defaults match
@@ -18,7 +28,7 @@ NOTARIZE_SCRIPT := ../scripts/notarize-darwin-app.sh
 .PHONY: build build-all package dev test clean
 
 build:
-	wails build -ldflags "$(LDFLAGS)"
+	wails build $(WAILS_BUILD_FLAGS)
 	@if [ -d build/bin/$(APP).app ]; then \
 		$(CODESIGN_SCRIPT) build/bin/$(APP).app "$(CODESIGN_IDENTITY)" "$(ENTITLEMENTS)"; \
 	fi
@@ -34,6 +44,9 @@ build:
 	@if [ -f build/bin/$(APP).exe ]; then \
 		cp build/bin/$(APP).exe dist/; \
 	fi
+	@if [ -f build/bin/$(APP) ]; then \
+		cp build/bin/$(APP) dist/; \
+	fi
 
 build-all: build
 
@@ -48,7 +61,10 @@ package: build
 	@if [ -f dist/$(APP).exe ]; then \
 		cd dist && zip $(APP)-$(VERSION)-windows.zip $(APP).exe; \
 	fi
-	@ls -la dist/*.zip 2>/dev/null || true
+	@if [ -f dist/$(APP) ]; then \
+		cd dist && tar -czf $(APP)-$(VERSION)-linux-amd64.tar.gz $(APP); \
+	fi
+	@ls -la dist/*.zip dist/*.tar.gz 2>/dev/null || true
 
 dev:
 	wails dev

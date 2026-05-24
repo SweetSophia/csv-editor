@@ -44,6 +44,12 @@ import type { SortKey } from './sort';
 import { inferColumnTypes } from './coltype';
 import { decodeTSV, encodeTSV } from './tsv';
 
+const shortcutModifier = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
+    ? '⌘'
+    : 'Ctrl+';
+const newFileShortcut = `${shortcutModifier}N`;
+const openFileShortcut = `${shortcutModifier}O`;
+
 function App() {
     const [state, dispatch] = useReducer(reducer, initialState);
     const [supportedEncodings, setSupportedEncodings] = useState<string[]>([]);
@@ -1106,8 +1112,9 @@ function App() {
                 <main className="placeholder">
                     <h1>CSV Editor</h1>
                     <p>
-                        Create a new file with <strong>File ▸ New</strong> (⌘N) or open
-                        an existing file with <strong>File ▸ Open…</strong> (⌘O).
+                        Create a new file with <strong>File ▸ New</strong> ({newFileShortcut})
+                        or open an existing file with <strong>File ▸ Open…</strong>{' '}
+                        ({openFileShortcut}).
                     </p>
                 </main>
             )}

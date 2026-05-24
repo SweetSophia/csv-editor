@@ -1,6 +1,6 @@
 # csv-editor
 
-A CSV/TSV viewer & editor GUI for Windows and macOS.
+A CSV/TSV viewer & editor GUI for macOS, Windows, and Linux/Ubuntu.
 
 Built with [Wails](https://wails.io) (Go + React/TypeScript). Designed to
 replace [TableTool](https://github.com/jakob/TableTool) with a maintained,
@@ -60,7 +60,7 @@ CP932), row/column copy operations, and TSV clipboard expansion correctly.
 
 ## Keyboard shortcuts
 
-| Action | macOS | Windows |
+| Action | macOS | Windows/Linux |
 |---|---|---|
 | New / Open / Save / Save As | ⌘N / ⌘O / ⌘S / ⇧⌘S | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |
 | New Window / Close Window | ⇧⌘N / ⌘W | Ctrl+Shift+N / Ctrl+W |
@@ -98,7 +98,9 @@ Calc.
 - **macOS 12+** (Apple Silicon recommended; Intel may work but is not
   prioritized — see [RFP](docs/en/csv-editor-rfp.md) §7)
 - **Windows 11** (Edge WebView2 ships with the OS; Windows 10 not supported)
-- **Building from source**: Go 1.23+, Node.js 20+, [Wails v2](https://wails.io)
+- **Ubuntu 24.04 LTS** / Linux with GTK 3 and WebKitGTK 4.1 development
+  libraries available for Wails
+- **Building from source**: Go 1.25+, Node.js 20+, [Wails v2.12](https://wails.io)
 
 ## Installation
 
@@ -111,15 +113,25 @@ Binaries are distributed via GitHub Releases.
 - **Windows**: the `.exe` is currently **unsigned**. SmartScreen shows
   "Windows protected your PC" on first run — click "More info" → "Run
   anyway". Authenticode signing for Windows is not yet in place.
+- **Linux/Ubuntu**: releases provide a `.tar.gz` containing the `csv-editor`
+  executable. Desktop metadata is maintained under `app/build/linux/` for
+  downstream installers or manual integration; no `.deb`, AppImage, Snap, or
+  Flatpak package is currently produced.
 
 ## Building from source
 
 ```bash
 cd app
-make build     # production build → dist/csv-editor.app (macOS) or .exe (Windows)
+make build     # production build → dist/csv-editor.app, .exe, or Linux binary
+make package   # release artifact → .zip (macOS/Windows) or .tar.gz (Linux)
 make dev       # live-reload development
 make test      # unit tests
 ```
+
+On Ubuntu 24.04, install Wails' Linux prerequisites including GTK 3 and
+WebKitGTK 4.1 development packages. The Makefile defaults Linux builds to
+`-tags webkit2_41`; if you invoke Wails directly, use
+`wails build -tags webkit2_41`.
 
 ## Documentation
 

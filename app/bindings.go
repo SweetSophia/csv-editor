@@ -259,7 +259,7 @@ func (b *Bindings) SaveFile(path, encodingName, lineEnding, delimiter string, ha
 		return fmt.Errorf("transcode to %s: %w", encodingName, err)
 	}
 
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 
