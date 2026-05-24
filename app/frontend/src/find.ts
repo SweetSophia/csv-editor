@@ -13,8 +13,8 @@ export interface Match {
     matchEnd: number; // exclusive
 }
 
-// buildRegex returns the search regex, or null when the query is empty or
-// (in regex mode) syntactically invalid.
+const regexTimeoutMs = 5000;
+
 function buildRegex(query: string, opts: FindOptions): RegExp | null {
     if (!query) return null;
     const flags = opts.caseSensitive ? 'g' : 'gi';
@@ -37,9 +37,12 @@ export function findMatches(
     const re = buildRegex(query, opts);
     if (!re) return [];
     const out: Match[] = [];
+    const deadline = Date.now() + regexTimeoutMs;
     for (let r = 0; r < rows.length; r++) {
+        if (Date.now() > deadline) break;
         const row = rows[r];
         for (let c = 0; c < row.length; c++) {
+            if (Date.now() > deadline) break;
             const cell = row[c] ?? '';
             if (!cell) continue;
             re.lastIndex = 0;
@@ -73,14 +76,16 @@ export function replaceAllEdits(
     const re = buildRegex(query, opts);
     if (!re) return [];
     const edits: PendingEdit[] = [];
+    const deadline = Date.now() + regexTimeoutMs;
     for (let r = 0; r < rows.length; r++) {
+        if (Date.now() > deadline) break;
         const row = rows[r];
         for (let c = 0; c < row.length; c++) {
+            if (Date.now() > deadline) break;
             const cell = row[c] ?? '';
             if (!cell) continue;
             re.lastIndex = 0;
             if (opts.wholeCell) {
-                // Only replace if the whole cell matches the pattern exactly.
                 if (re.test(cell) && re.lastIndex === cell.length) {
                     if (cell !== replacement) {
                         edits.push({ rowIndex: r, columnIndex: c, value: replacement });

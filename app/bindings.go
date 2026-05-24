@@ -17,8 +17,10 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// Bindings is the thin Wails binding layer.
-// Business logic will be delegated to internal/ packages as features land.
+const (
+	maxFileSize = 500 * 1024 * 1024 // 500 MB
+)
+
 type Bindings struct {
 	ctx context.Context
 }
@@ -153,6 +155,14 @@ func (b *Bindings) SaveFileDialog(defaultName string) (string, error) {
 // parses as CSV or TSV based on delimiterHint or filename, and returns the
 // parsed table. The window title is also updated to "<filename> — CSV Editor".
 func (b *Bindings) LoadFile(path, encodingHint, delimiterHint string, hasHeader bool) (*FileLoadResult, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("stat %s: %w", path, err)
+	}
+	if info.Size() > maxFileSize {
+		return nil, fmt.Errorf("file too large: %d bytes (max %d)", info.Size(), maxFileSize)
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
@@ -249,7 +259,7 @@ func (b *Bindings) SaveFile(path, encodingName, lineEnding, delimiter string, ha
 		return fmt.Errorf("transcode to %s: %w", encodingName, err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 
@@ -393,7 +403,13 @@ func (b *Bindings) RequestNewWindow() {
 	}
 	if err := cmd.Start(); err != nil {
 		wailsRuntime.EventsEmit(b.ctx, "file:error", "new window: "+err.Error())
+		return
 	}
+	go func() {
+		if err := cmd.Wait(); err != nil {
+			wailsRuntime.EventsEmit(b.ctx, "file:error", "new window: "+err.Error())
+		}
+	}()
 }
 
 // NewFile returns a blank in-memory file scaffold (Untitled, 5×3) and
