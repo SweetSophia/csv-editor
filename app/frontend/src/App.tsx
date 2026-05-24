@@ -1134,20 +1134,8 @@ function App() {
                     initialValue={rows[editing.rowIndex]?.[editing.columnIndex] ?? ''}
                     rowIndex={editing.rowIndex}
                     columnIndex={editing.columnIndex}
-                    onSave={(value) => {
-                        dispatch({
-                            type: 'APPLY_EDITS',
-                            edits: [
-                                {
-                                    rowIndex: editing.rowIndex,
-                                    columnIndex: editing.columnIndex,
-                                    value,
-                                },
-                            ],
-                        });
-                        setEditing(null);
-                    }}
-                    onCancel={() => setEditing(null)}
+                    onSave={(value) => handleCommitEdit(value, 'none')}
+                    onCancel={handleCancelEdit}
                 />
             )}
         </div>

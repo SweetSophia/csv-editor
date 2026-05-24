@@ -546,7 +546,7 @@ textarea.vt-cell-editor {
     border: none;
     border-bottom: 1px solid var(--border);
     font: inherit;
-    font-variantnumeric: tabular-nums;
+    font-variant-numeric: tabular-nums;
     resize: vertical;
     outline: none;
 }

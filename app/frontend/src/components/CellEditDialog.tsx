@@ -34,6 +34,7 @@ export function CellEditDialog({
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        e.stopPropagation();
         if (isIME(e)) return;
         if (e.key === 'Escape') {
             e.preventDefault();
@@ -45,12 +46,19 @@ export function CellEditDialog({
     };
 
     return (
-        <div className="cell-edit-dialog-overlay" onClick={onCancel}>
+        <div
+            className="cell-edit-dialog-overlay"
+            onClick={onCancel}
+            role="presentation"
+        >
             <div
                 className="cell-edit-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="cell-edit-title"
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="cell-edit-dialog-header">
+                <div className="cell-edit-dialog-header" id="cell-edit-title">
                     Edit Cell ({rowIndex + 1}, {columnIndex + 1})
                 </div>
                 <textarea
@@ -70,12 +78,14 @@ export function CellEditDialog({
                 />
                 <div className="cell-edit-dialog-buttons">
                     <button
+                        type="button"
                         className="cell-edit-dialog-btn cell-edit-dialog-btn-cancel"
                         onClick={onCancel}
                     >
                         Cancel
                     </button>
                     <button
+                        type="button"
                         className="cell-edit-dialog-btn cell-edit-dialog-btn-save"
                         onClick={() => onSave(value)}
                     >
