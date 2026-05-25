@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -155,17 +156,9 @@ func (b *Bindings) SaveFileDialog(defaultName string) (string, error) {
 // parses as CSV or TSV based on delimiterHint or filename, and returns the
 // parsed table. The window title is also updated to "<filename> — CSV Editor".
 func (b *Bindings) LoadFile(path, encodingHint, delimiterHint string, hasHeader bool) (*FileLoadResult, error) {
-	info, err := os.Stat(path)
+	data, err := readFileBounded(path, maxFileSize)
 	if err != nil {
-		return nil, fmt.Errorf("stat %s: %w", path, err)
-	}
-	if info.Size() > maxFileSize {
-		return nil, fmt.Errorf("file too large: %d bytes (max %d)", info.Size(), maxFileSize)
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+		return nil, err
 	}
 
 	detected := encoding.Detect(data)
@@ -226,6 +219,34 @@ func (b *Bindings) LoadFile(path, encodingHint, delimiterHint string, hasHeader 
 	}, nil
 }
 
+func readFileBounded(path string, maxBytes int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat %s: %w", path, err)
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("read %s: is a directory", path)
+	}
+	if info.Size() > maxBytes {
+		return nil, fmt.Errorf("file too large: exceeds maximum size limit of %d bytes", maxBytes)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("file too large: exceeds maximum size limit of %d bytes", maxBytes)
+	}
+	return data, nil
+}
+
 // SaveFile encodes the table back to path with the given encoding, line
 // ending, and delimiter. UTF-8-BOM is rejected (write encoding is "UTF-8" no
 // BOM per RFP §2). Returns an error on failure; nil on success.
@@ -259,7 +280,7 @@ func (b *Bindings) SaveFile(path, encodingName, lineEnding, delimiter string, ha
 		return fmt.Errorf("transcode to %s: %w", encodingName, err)
 	}
 
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 

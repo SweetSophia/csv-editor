@@ -44,6 +44,17 @@ import type { SortKey } from './sort';
 import { inferColumnTypes } from './coltype';
 import { decodeTSV, encodeTSV } from './tsv';
 
+const noMatches: Match[] = [];
+
+function getShortcutModifier(): string {
+    if (typeof navigator === 'undefined') return 'Ctrl+';
+    return /Mac|iPhone|iPad|iPod/.test(navigator.userAgent) ? '⌘' : 'Ctrl+';
+}
+
+const shortcutModifier = getShortcutModifier();
+const newFileShortcut = `${shortcutModifier}N`;
+const openFileShortcut = `${shortcutModifier}O`;
+
 function App() {
     const [state, dispatch] = useReducer(reducer, initialState);
     const [supportedEncodings, setSupportedEncodings] = useState<string[]>([]);
@@ -73,6 +84,11 @@ function App() {
     });
     const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
 
+    const matchResultOkRef = { current: true as boolean | undefined };
+    useEffect(() => {
+        matchResultOkRef.current = undefined;
+    }, [findQuery, findOptions]);
+
     const { file, rows } = state;
     const dirty = isDirty(state);
 
@@ -87,10 +103,22 @@ function App() {
         [rows, maxColumns],
     );
 
-    const matches: Match[] = useMemo(() => {
-        if (!findOpen || !findQuery) return [];
+    const matchResult = useMemo(() => {
+        if (!findOpen || !findQuery) return { ok: true as const, value: noMatches };
         return findMatches(findQuery, findOptions, rows);
     }, [findOpen, findQuery, findOptions, rows]);
+    const matches: Match[] = matchResult.ok ? matchResult.value : noMatches;
+
+    useEffect(() => {
+        if (!findOpen || !findQuery) return;
+        if (!matchResult.ok) {
+            setError(matchResult.message);
+            matchResultOkRef.current = false;
+        } else if (matchResultOkRef.current === false) {
+            setError(null);
+            matchResultOkRef.current = true;
+        }
+    }, [findOpen, findQuery, matchResult]);
 
     // Clamp currentMatchIndex when matches shrink (e.g., after a replace
     // or an edit removed matches). Does NOT move the selection.
@@ -447,9 +475,13 @@ function App() {
 
     const handleReplaceAll = useCallback(() => {
         if (!findOpen || matches.length === 0) return;
-        const edits = replaceAllEdits(findQuery, replaceValue, findOptions, rows);
-        if (edits.length > 0) {
-            dispatch({ type: 'APPLY_EDITS', edits });
+        const result = replaceAllEdits(findQuery, replaceValue, findOptions, rows);
+        if (!result.ok) {
+            setError(result.message);
+            return;
+        }
+        if (result.value.length > 0) {
+            dispatch({ type: 'APPLY_EDITS', edits: result.value });
         }
     }, [findOpen, matches.length, findQuery, replaceValue, findOptions, rows]);
 
@@ -1106,8 +1138,9 @@ function App() {
                 <main className="placeholder">
                     <h1>CSV Editor</h1>
                     <p>
-                        Create a new file with <strong>File ▸ New</strong> (⌘N) or open
-                        an existing file with <strong>File ▸ Open…</strong> (⌘O).
+                        Create a new file with <strong>File ▸ New</strong> ({newFileShortcut})
+                        or open an existing file with <strong>File ▸ Open…</strong>{' '}
+                        ({openFileShortcut}).
                     </p>
                 </main>
             )}

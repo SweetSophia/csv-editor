@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=CSV Editor
+Comment=View and edit CSV and TSV files
+Exec=csv-editor %F
+Icon=csv-editor
+Terminal=false
+Categories=Office;Utility;
+MimeType=text/csv;text/tab-separated-values;

@@ -6,6 +6,7 @@ The structure is:
 
 * bin - Output directory
 * darwin - macOS specific files
+* linux - Linux specific files
 * windows - Windows specific files
 
 ## Mac
@@ -19,6 +20,12 @@ The directory contains the following files:
 
 - `Info.plist` - the main plist file used for Mac builds. It is used when building using `wails build`.
 - `Info.dev.plist` - same as the main plist file but used when building using `wails dev`.
+
+## Linux
+
+The `linux` directory contains source metadata for Linux desktop integration.
+
+- `csv-editor.desktop` - Desktop entry metadata for menus and file associations. It is packaged manually by downstream installers or release scripts; `make package` only creates the binary tarball.
 
 ## Windows
 
