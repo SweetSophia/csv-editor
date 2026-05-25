@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -155,17 +156,9 @@ func (b *Bindings) SaveFileDialog(defaultName string) (string, error) {
 // parses as CSV or TSV based on delimiterHint or filename, and returns the
 // parsed table. The window title is also updated to "<filename> — CSV Editor".
 func (b *Bindings) LoadFile(path, encodingHint, delimiterHint string, hasHeader bool) (*FileLoadResult, error) {
-	info, err := os.Stat(path)
+	data, err := readFileBounded(path, maxFileSize)
 	if err != nil {
-		return nil, fmt.Errorf("stat %s: %w", path, err)
-	}
-	if info.Size() > maxFileSize {
-		return nil, fmt.Errorf("file too large: %d bytes (max %d)", info.Size(), maxFileSize)
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+		return nil, err
 	}
 
 	detected := encoding.Detect(data)
@@ -224,6 +217,35 @@ func (b *Bindings) LoadFile(path, encodingHint, delimiterHint string, hasHeader 
 		Rows:             table.Rows,
 		MaxColumns:       table.MaxColumns(),
 	}, nil
+}
+
+func readFileBounded(path string, maxBytes int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat %s: %w", path, err)
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("read %s: is a directory", path)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	if int64(len(data)) > maxBytes {
+		size := int64(len(data))
+		if info.Size() > maxBytes {
+			size = info.Size()
+		}
+		return nil, fmt.Errorf("file too large: %d bytes (max %d)", size, maxBytes)
+	}
+	return data, nil
 }
 
 // SaveFile encodes the table back to path with the given encoding, line

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 
 interface CellEditDialogProps {
     initialValue: string;
@@ -16,16 +17,24 @@ export function CellEditDialog({
     onCancel,
 }: CellEditDialogProps) {
     const [value, setValue] = useState(initialValue);
+    const dialogRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const composingRef = useRef(false);
     const compositionEndAtRef = useRef(0);
 
     useEffect(() => {
+        const previouslyFocused = document.activeElement;
         textareaRef.current?.focus();
         textareaRef.current?.select();
+
+        return () => {
+            if (previouslyFocused instanceof HTMLElement && document.contains(previouslyFocused)) {
+                previouslyFocused.focus();
+            }
+        };
     }, []);
 
-    const isIME = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const isIME = (e: KeyboardEvent<HTMLElement>) => {
         if (e.nativeEvent.isComposing) return true;
         if (composingRef.current) return true;
         if (e.keyCode === 229) return true;
@@ -33,8 +42,53 @@ export function CellEditDialog({
         return false;
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const trapFocus = (e: KeyboardEvent<HTMLElement>) => {
+        const dialog = dialogRef.current;
+        if (!dialog) return;
+
+        const focusable = Array.from(
+            dialog.querySelectorAll<HTMLElement>(
+                'button:not([disabled]), textarea:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            )
+        ).filter((el) => !el.hasAttribute('disabled') && el.tabIndex >= 0);
+
+        if (focusable.length === 0) {
+            e.preventDefault();
+            dialog.focus();
+            return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+
+        if (e.shiftKey) {
+            if (active === first || !dialog.contains(active)) {
+                e.preventDefault();
+                last.focus();
+            }
+        } else if (active === last || !dialog.contains(active)) {
+            e.preventDefault();
+            first.focus();
+        }
+    };
+
+    const handleDialogKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
         e.stopPropagation();
+        if (e.key === 'Tab') {
+            trapFocus(e);
+        } else if (e.key === 'Escape' && !isIME(e)) {
+            e.preventDefault();
+            onCancel();
+        }
+    };
+
+    const handleTextareaKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+        e.stopPropagation();
+        if (e.key === 'Tab') {
+            trapFocus(e);
+            return;
+        }
         if (isIME(e)) return;
         if (e.key === 'Escape') {
             e.preventDefault();
@@ -56,7 +110,10 @@ export function CellEditDialog({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="cell-edit-title"
+                ref={dialogRef}
+                tabIndex={-1}
                 onClick={(e) => e.stopPropagation()}
+                onKeyDown={handleDialogKeyDown}
             >
                 <div className="cell-edit-dialog-header" id="cell-edit-title">
                     Edit Cell ({rowIndex + 1}, {columnIndex + 1})
@@ -73,7 +130,7 @@ export function CellEditDialog({
                         composingRef.current = false;
                         compositionEndAtRef.current = Date.now();
                     }}
-                    onKeyDown={handleKeyDown}
+                    onKeyDown={handleTextareaKeyDown}
                     spellCheck={false}
                 />
                 <div className="cell-edit-dialog-buttons">

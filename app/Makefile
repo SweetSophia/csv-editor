@@ -2,6 +2,9 @@ APP     := csv-editor
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -X 'main.version=$(VERSION)'
 UNAME_S := $(shell uname -s)
+LINUX_GOOS ?= $(shell go env GOOS)
+LINUX_GOARCH ?= $(shell go env GOARCH)
+LINUX_ARTIFACT_SUFFIX := $(LINUX_GOOS)-$(LINUX_GOARCH)
 
 ifeq ($(UNAME_S),Linux)
 WAILS_TAGS ?= webkit2_41
@@ -62,7 +65,7 @@ package: build
 		cd dist && zip $(APP)-$(VERSION)-windows.zip $(APP).exe; \
 	fi
 	@if [ -f dist/$(APP) ]; then \
-		cd dist && tar -czf $(APP)-$(VERSION)-linux-amd64.tar.gz $(APP); \
+		cd dist && tar -czf $(APP)-$(VERSION)-$(LINUX_ARTIFACT_SUFFIX).tar.gz $(APP); \
 	fi
 	@ls -la dist/*.zip dist/*.tar.gz 2>/dev/null || true
 

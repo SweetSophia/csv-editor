@@ -44,9 +44,14 @@ import type { SortKey } from './sort';
 import { inferColumnTypes } from './coltype';
 import { decodeTSV, encodeTSV } from './tsv';
 
-const shortcutModifier = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
-    ? '⌘'
-    : 'Ctrl+';
+const noMatches: Match[] = [];
+
+function getShortcutModifier(): string {
+    if (typeof navigator === 'undefined') return 'Ctrl+';
+    return /Mac|iPhone|iPad|iPod/.test(navigator.userAgent) ? '⌘' : 'Ctrl+';
+}
+
+const shortcutModifier = getShortcutModifier();
 const newFileShortcut = `${shortcutModifier}N`;
 const openFileShortcut = `${shortcutModifier}O`;
 
@@ -93,10 +98,16 @@ function App() {
         [rows, maxColumns],
     );
 
-    const matches: Match[] = useMemo(() => {
-        if (!findOpen || !findQuery) return [];
+    const matchResult = useMemo(() => {
+        if (!findOpen || !findQuery) return { ok: true as const, value: noMatches };
         return findMatches(findQuery, findOptions, rows);
     }, [findOpen, findQuery, findOptions, rows]);
+    const matches: Match[] = matchResult.ok ? matchResult.value : noMatches;
+
+    useEffect(() => {
+        if (!findOpen || !findQuery || matchResult.ok) return;
+        setError(matchResult.message);
+    }, [findOpen, findQuery, matchResult]);
 
     // Clamp currentMatchIndex when matches shrink (e.g., after a replace
     // or an edit removed matches). Does NOT move the selection.
@@ -453,9 +464,13 @@ function App() {
 
     const handleReplaceAll = useCallback(() => {
         if (!findOpen || matches.length === 0) return;
-        const edits = replaceAllEdits(findQuery, replaceValue, findOptions, rows);
-        if (edits.length > 0) {
-            dispatch({ type: 'APPLY_EDITS', edits });
+        const result = replaceAllEdits(findQuery, replaceValue, findOptions, rows);
+        if (!result.ok) {
+            setError(result.message);
+            return;
+        }
+        if (result.value.length > 0) {
+            dispatch({ type: 'APPLY_EDITS', edits: result.value });
         }
     }, [findOpen, matches.length, findQuery, replaceValue, findOptions, rows]);
 

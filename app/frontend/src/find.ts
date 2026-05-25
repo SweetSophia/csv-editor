@@ -13,36 +13,122 @@ export interface Match {
     matchEnd: number; // exclusive
 }
 
+type FindFailureReason = 'invalid-regex' | 'unsafe-regex' | 'search-timeout';
+
+export interface FindFailure {
+    ok: false;
+    reason: FindFailureReason;
+    message: string;
+}
+
+export interface FindSuccess<T> {
+    ok: true;
+    value: T;
+}
+
+export type FindResult<T> = FindSuccess<T> | FindFailure;
+
 const regexTimeoutMs = 5000;
 
-function buildRegex(query: string, opts: FindOptions): RegExp | null {
-    if (!query) return null;
+function fail(reason: FindFailureReason, message: string): FindFailure {
+    return { ok: false, reason, message };
+}
+
+function hasNestedQuantifier(pattern: string): boolean {
+    const stack: Array<{ hasInnerQuantifier: boolean }> = [];
+    let escaped = false;
+    let inClass = false;
+    for (let i = 0; i < pattern.length; i++) {
+        const ch = pattern[i];
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (ch === '\\') {
+            escaped = true;
+            continue;
+        }
+        if (inClass) {
+            if (ch === ']') inClass = false;
+            continue;
+        }
+        if (ch === '[') {
+            inClass = true;
+            continue;
+        }
+        if (ch === '(') {
+            stack.push({ hasInnerQuantifier: false });
+            continue;
+        }
+        if (ch === ')') {
+            const group = stack.pop();
+            if (!group) continue;
+            const next = pattern[i + 1];
+            const groupIsQuantified = next === '*' || next === '+' || next === '?' || next === '{';
+            if (groupIsQuantified && group.hasInnerQuantifier) return true;
+            if (groupIsQuantified && stack.length > 0) {
+                stack[stack.length - 1].hasInnerQuantifier = true;
+            }
+            continue;
+        }
+        const isGroupPrefix = ch === '?' && pattern[i - 1] === '(';
+        if ((ch === '*' || ch === '+' || ch === '?' || ch === '{') && !isGroupPrefix && stack.length > 0) {
+            stack[stack.length - 1].hasInnerQuantifier = true;
+        }
+    }
+    return false;
+}
+
+function hasRepeatedAlternation(pattern: string): boolean {
+    return /\((?:\?[:=!<][^)]*)?[^)]*\|[^)]*\)(?:[+*?]|\{)/.test(pattern);
+}
+
+function validateRegexPattern(pattern: string): FindFailure | null {
+    if (hasNestedQuantifier(pattern) || hasRepeatedAlternation(pattern)) {
+        return fail(
+            'unsafe-regex',
+            'Search failed: this regular expression is too complex and could freeze the app.',
+        );
+    }
+    return null;
+}
+
+function buildRegex(query: string, opts: FindOptions): FindResult<RegExp | null> {
+    if (!query) return { ok: true, value: null };
     const flags = opts.caseSensitive ? 'g' : 'gi';
     if (opts.regex) {
+        const unsafe = validateRegexPattern(query);
+        if (unsafe) return unsafe;
         try {
-            return new RegExp(query, flags);
+            return { ok: true, value: new RegExp(query, flags) };
         } catch {
-            return null;
+            return fail('invalid-regex', 'Search failed: invalid regular expression.');
         }
     }
     const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(escaped, flags);
+    return { ok: true, value: new RegExp(escaped, flags) };
 }
 
 export function findMatches(
     query: string,
     opts: FindOptions,
     rows: string[][],
-): Match[] {
-    const re = buildRegex(query, opts);
-    if (!re) return [];
+): FindResult<Match[]> {
+    const built = buildRegex(query, opts);
+    if (!built.ok) return built;
+    const re = built.value;
+    if (!re) return { ok: true, value: [] };
     const out: Match[] = [];
     const deadline = Date.now() + regexTimeoutMs;
     for (let r = 0; r < rows.length; r++) {
-        if (Date.now() > deadline) break;
+        if (Date.now() > deadline) {
+            return fail('search-timeout', 'Search failed: the table is too large to search safely.');
+        }
         const row = rows[r];
         for (let c = 0; c < row.length; c++) {
-            if (Date.now() > deadline) break;
+            if (Date.now() > deadline) {
+                return fail('search-timeout', 'Search failed: the table is too large to search safely.');
+            }
             const cell = row[c] ?? '';
             if (!cell) continue;
             re.lastIndex = 0;
@@ -62,7 +148,7 @@ export function findMatches(
             }
         }
     }
-    return out;
+    return { ok: true, value: out };
 }
 
 // replaceAllEdits builds one PendingEdit per cell containing matches,
@@ -72,16 +158,22 @@ export function replaceAllEdits(
     replacement: string,
     opts: FindOptions,
     rows: string[][],
-): PendingEdit[] {
-    const re = buildRegex(query, opts);
-    if (!re) return [];
+): FindResult<PendingEdit[]> {
+    const built = buildRegex(query, opts);
+    if (!built.ok) return built;
+    const re = built.value;
+    if (!re) return { ok: true, value: [] };
     const edits: PendingEdit[] = [];
     const deadline = Date.now() + regexTimeoutMs;
     for (let r = 0; r < rows.length; r++) {
-        if (Date.now() > deadline) break;
+        if (Date.now() > deadline) {
+            return fail('search-timeout', 'Replace all failed: the table is too large to search safely.');
+        }
         const row = rows[r];
         for (let c = 0; c < row.length; c++) {
-            if (Date.now() > deadline) break;
+            if (Date.now() > deadline) {
+                return fail('search-timeout', 'Replace all failed: the table is too large to search safely.');
+            }
             const cell = row[c] ?? '';
             if (!cell) continue;
             re.lastIndex = 0;
@@ -99,7 +191,7 @@ export function replaceAllEdits(
             }
         }
     }
-    return edits;
+    return { ok: true, value: edits };
 }
 
 // replaceOneEdit applies the replacement to a single match and returns
@@ -115,8 +207,9 @@ export function replaceOneEdit(
     if (opts.regex) {
         // To support $-substitutions on a single match, re-run the regex
         // pinned at matchStart.
-        const re = buildRegex(query, opts);
-        if (!re) return null;
+        const built = buildRegex(query, opts);
+        if (!built.ok || !built.value) return null;
+        const re = built.value;
         re.lastIndex = match.matchStart;
         const m = re.exec(cell);
         if (!m || m.index !== match.matchStart) return null;
