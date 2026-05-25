@@ -233,6 +233,9 @@ func readFileBounded(path string, maxBytes int64) ([]byte, error) {
 	if info.IsDir() {
 		return nil, fmt.Errorf("read %s: is a directory", path)
 	}
+	if info.Size() > maxBytes {
+		return nil, fmt.Errorf("file too large: exceeds maximum size limit of %d bytes", maxBytes)
+	}
 
 	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
 	if err != nil {

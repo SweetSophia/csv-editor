@@ -37,7 +37,7 @@
 - Clipboard copy emits TSV; pasting TSV into one cell expands; shape mismatch into a multi-cell selection confirms through a native dialog.
 - IME-safe editing must wait for `compositionend` and guard `keyCode === 229` before committing.
 - One file per window; New Window spawns another process.
-- macOS package signs/notarizes/staples when credentials exist; Windows `.exe` remains unsigned. Targets are macOS 12+ and Windows 11.
+- macOS package signs/notarizes/staples when credentials exist; Windows `.exe` remains unsigned. Targets are macOS 12+, Ubuntu 22.04+ / 24.04+ (amd64), and Windows 11.
 
 ## Generated / Artifacts
 - Do not hand-edit or commit generated/build outputs: `app/frontend/wailsjs`, `app/frontend/dist`, `app/build/bin`, `app/dist`, `node_modules`, `app/frontend/package.json.md5`, `app/build/windows/installer/wails_tools.nsh`.

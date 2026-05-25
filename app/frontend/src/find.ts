@@ -121,10 +121,23 @@ function hasRepeatedAlternation(pattern: string): boolean {
             const group = stack.pop();
             if (!group) continue;
             const next = pattern[i + 1];
-            const groupIsQuantified = next === '*' || next === '+' || next === '?' || next === '{';
-            if (groupIsQuantified && (group.hasAlternation || group.hasInnerAlternation)) return true;
-            if (groupIsQuantified && stack.length > 0) {
-                stack[stack.length - 1].hasInnerAlternation = true;
+            let isDangerous = false;
+            if (next === '*') {
+                isDangerous = true;
+            } else if (next === '+' || next === '?') {
+                isDangerous = false;
+            } else if (next === '{') {
+                const match = pattern.slice(i + 2).match(/^(\d+),/);
+                const n = match ? parseInt(match[1], 10) : 0;
+                isDangerous = n < 3;
+            } else {
+                isDangerous = false;
+            }
+            if (isDangerous && (group.hasAlternation || group.hasInnerAlternation)) return true;
+            if (next === '*' || next === '+' || next === '?' || next === '{') {
+                if (stack.length > 0) {
+                    stack[stack.length - 1].hasInnerAlternation = true;
+                }
             }
             continue;
         }
@@ -180,9 +193,6 @@ export function findMatches(
         }
         const row = rows[r];
         for (let c = 0; c < row.length; c++) {
-            if (Date.now() > deadline) {
-                return fail('search-timeout', 'Search failed: the table is too large to search safely.');
-            }
             const cell = row[c] ?? '';
             if (!cell) continue;
             re.lastIndex = 0;

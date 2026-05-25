@@ -84,6 +84,11 @@ function App() {
     });
     const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
 
+    const matchResultOkRef = { current: true as boolean | undefined };
+    useEffect(() => {
+        matchResultOkRef.current = undefined;
+    }, [findQuery, findOptions]);
+
     const { file, rows } = state;
     const dirty = isDirty(state);
 
@@ -105,8 +110,14 @@ function App() {
     const matches: Match[] = matchResult.ok ? matchResult.value : noMatches;
 
     useEffect(() => {
-        if (!findOpen || !findQuery || matchResult.ok) return;
-        setError(matchResult.message);
+        if (!findOpen || !findQuery) return;
+        if (!matchResult.ok) {
+            setError(matchResult.message);
+            matchResultOkRef.current = false;
+        } else if (matchResultOkRef.current === false) {
+            setError(null);
+            matchResultOkRef.current = true;
+        }
     }, [findOpen, findQuery, matchResult]);
 
     // Clamp currentMatchIndex when matches shrink (e.g., after a replace
