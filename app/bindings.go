@@ -239,11 +239,7 @@ func readFileBounded(path string, maxBytes int64) ([]byte, error) {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	if int64(len(data)) > maxBytes {
-		size := int64(len(data))
-		if info.Size() > maxBytes {
-			size = info.Size()
-		}
-		return nil, fmt.Errorf("file too large: %d bytes (max %d)", size, maxBytes)
+		return nil, fmt.Errorf("file too large: exceeds maximum size limit of %d bytes", maxBytes)
 	}
 	return data, nil
 }

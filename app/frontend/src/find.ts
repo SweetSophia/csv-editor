@@ -80,7 +80,61 @@ function hasNestedQuantifier(pattern: string): boolean {
 }
 
 function hasRepeatedAlternation(pattern: string): boolean {
-    return /\((?:\?[:=!<][^)]*)?[^)]*\|[^)]*\)(?:[+*?]|\{)/.test(pattern);
+    type GroupState = { hasAlternation: boolean; hasInnerAlternation: boolean; hasInnerQuantifier: boolean };
+    const stack: GroupState[] = [];
+    let escaped = false;
+    let inClass = false;
+
+    for (let i = 0; i < pattern.length; i++) {
+        const ch = pattern[i];
+
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (ch === '\\') {
+            escaped = true;
+            continue;
+        }
+        if (inClass) {
+            if (ch === ']') inClass = false;
+            continue;
+        }
+        if (ch === '[') {
+            inClass = true;
+            continue;
+        }
+
+        if (ch === '(') {
+            stack.push({ hasAlternation: false, hasInnerAlternation: false, hasInnerQuantifier: false });
+            continue;
+        }
+
+        if (ch === '|') {
+            if (stack.length > 0) {
+                stack[stack.length - 1].hasAlternation = true;
+            }
+            continue;
+        }
+
+        if (ch === ')') {
+            const group = stack.pop();
+            if (!group) continue;
+            const next = pattern[i + 1];
+            const groupIsQuantified = next === '*' || next === '+' || next === '?' || next === '{';
+            if (groupIsQuantified && (group.hasAlternation || group.hasInnerAlternation)) return true;
+            if (groupIsQuantified && stack.length > 0) {
+                stack[stack.length - 1].hasInnerAlternation = true;
+            }
+            continue;
+        }
+
+        const isGroupPrefix = ch === '?' && pattern[i - 1] === '(';
+        if ((ch === '*' || ch === '+' || ch === '?' || ch === '{') && !isGroupPrefix && stack.length > 0) {
+            stack[stack.length - 1].hasInnerQuantifier = true;
+        }
+    }
+    return false;
 }
 
 function validateRegexPattern(pattern: string): FindFailure | null {
